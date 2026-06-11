@@ -776,27 +776,7 @@ export default function App() {
                 <span>{TRANSLATIONS[language].deletedVectors}: <strong className="text-[#d4af37] font-bold font-mono">{totalCompletedCount}</strong></span>
               </div>
 
-              {/* Language Switcher */}
-              <div className="flex items-center gap-1 bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg p-0.5">
-                <button
-                  type="button"
-                  onClick={() => handleLanguageChange('el')}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                    language === 'el' ? 'bg-[#d4af37] text-black font-extrabold shadow-sm' : 'text-[#666] hover:text-white'
-                  }`}
-                >
-                  ΕΛ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleLanguageChange('en')}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                    language === 'en' ? 'bg-[#d4af37] text-black font-extrabold shadow-sm' : 'text-[#666] hover:text-white'
-                  }`}
-                >
-                  EN
-                </button>
-              </div>
+
 
               {/* User Dropdown / Authenticated Context */}
               <div className="relative">
@@ -869,8 +849,8 @@ export default function App() {
                     </div>
 
                     {/* Google Connection status and Actions */}
-                    <div className="space-y-2 border-t border-[#1a1a1a]/60 pt-3">
-                      {googleUser ? (
+                    {googleUser && (
+                      <div className="space-y-2 border-t border-[#1a1a1a]/60 pt-3">
                         <div className="space-y-2">
                           <div className="p-2 bg-emerald-950/10 border border-emerald-950/30 rounded-lg text-[10px] text-emerald-400 flex items-center gap-1.5 leading-tight">
                             <ShieldCheck size={12} className="shrink-0" />
@@ -888,37 +868,8 @@ export default function App() {
                             {language === 'el' ? 'Αποσύνδεση Google' : 'Sign Out Google'}
                           </button>
                         </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <p className="text-[10px] text-[#666] leading-relaxed">
-                            {language === 'el'
-                              ? '💡 Συνδεθείτε προαιρετικά με Google για να επιτρέψετε στον Λωτό να στείλει removals ψηφιακά.'
-                              : '💡 Optionally connect to Google to authorize Lotos to dispatch removal filings automatically.'}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleStartGoogleAuth();
-                              setUserDropdownOpen(false);
-                            }}
-                            disabled={isAuthorizing}
-                            className="w-full bg-[#111] hover:bg-[#1a1a1a] border border-[#1a1a1a] hover:border-[#d4af37]/30 text-white font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer text-[11px]"
-                          >
-                            <Mail size={13} className="text-[#d4af37]" />
-                            {isAuthorizing
-                              ? (language === 'el' ? 'Επικοινωνία...' : 'Connecting...')
-                              : (language === 'el' ? 'Login με Google' : 'Login with Google')}
-                          </button>
-
-                          {authError && (
-                            <div className="p-2 bg-red-950/10 border border-red-900/30 rounded-lg text-[10px] text-red-400 flex gap-1.5">
-                              <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-                              <span>{authError}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
 
                     {/* Dashboard Logout (Passcode session) */}
                     {isAuthRequired && (
@@ -1052,6 +1003,7 @@ export default function App() {
             profile={profile}
             onUpdateProfile={handleUpdateProfile}
             language={language}
+            onLanguageChange={handleLanguageChange}
             googleToken={googleToken}
             googleUser={googleUser}
             onGoogleSignOut={handleGoogleSignOut}

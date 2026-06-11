@@ -63,7 +63,7 @@ export const TRANSLATIONS = {
     addNewProfile: "👤 Ρύθμιση Προφίλ",
     cancel: "Ακύρωση",
     fullLegalName: "Πλήρες Νομικό Όνομα",
-    latinName: "Όνομα με λατινικούς χαρακτήρες (Προαιρετικό)",
+    latinName: "Όνομα στα Αγγλικά (Προαιρετικό)",
     latinNameNotice: "Χρησιμοποιείται για την επικοινωνία με διεθνείς data brokers (π.χ. Ioannis Papadopoulos).",
     middleNameNotice: "Καθορίστε μεσαία ονόματα που ταιριάζουν με ιστορικούς λογαριασμούς.",
     primaryEmail: "Κύριο Email",

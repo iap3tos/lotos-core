@@ -8,6 +8,7 @@ interface PersonalProfileProps {
   profile: ProfileDetails;
   onUpdateProfile: (profile: Partial<ProfileDetails>) => void;
   language: Language;
+  onLanguageChange: (lang: Language) => void;
   
   // Google Auth props
   googleToken: string | null;
@@ -26,6 +27,7 @@ export default function PersonalProfile({
   profile,
   onUpdateProfile,
   language,
+  onLanguageChange,
   googleToken,
   googleUser,
   onGoogleSignOut,
@@ -116,18 +118,47 @@ export default function PersonalProfile({
     <div className="space-y-6 animate-fade-in" id="profile-pane">
       
       {/* Upper header */}
-      <div className="border-b border-[#1a1a1a] pb-5">
-        <span className="text-[10px] font-bold tracking-[0.2em] text-[#666] uppercase">
-          {language === 'el' ? 'ΠΡΟΣΩΠΙΚΟΣ ΧΩΡΟΣ ΕΝΕΡΓΕΙΩΝ' : 'PERSONAL ACTION VAULT'}
-        </span>
-        <h1 className="text-2xl md:text-3xl font-serif text-[#e5e5e5] mt-1">
-          {language === 'el' ? '👤 Το Προφίλ μου' : '👤 My Profile'}
-        </h1>
-        <p className="text-xs text-[#666] mt-1 leading-relaxed">
-          {language === 'el' 
-            ? 'Διαχειριστείτε τα προσωπικά σας στοιχεία ταυτότητας που χρησιμοποιούνται για τη σύνταξη και την αυτόματη αποστολή αιτημάτων διαγραφής μέσω Gmail.'
-            : 'Manage your personal identity credentials used to draft and automatically dispatch suppression filings via Gmail.'}
-        </p>
+      <div className="border-b border-[#1a1a1a] pb-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <span className="text-[10px] font-bold tracking-[0.2em] text-[#666] uppercase">
+            {language === 'el' ? 'ΠΡΟΣΩΠΙΚΟΣ ΧΩΡΟΣ ΕΝΕΡΓΕΙΩΝ' : 'PERSONAL ACTION VAULT'}
+          </span>
+          <h1 className="text-2xl md:text-3xl font-serif text-[#e5e5e5] mt-1">
+            {language === 'el' ? '👤 Το Προφίλ μου' : '👤 My Profile'}
+          </h1>
+          <p className="text-xs text-[#666] mt-1 leading-relaxed">
+            {language === 'el' 
+              ? 'Διαχειριστείτε τα προσωπικά σας στοιχεία ταυτότητας που χρησιμοποιούνται για τη σύνταξη και την αυτόματη αποστολή αιτημάτων διαγραφής μέσω Gmail.'
+              : 'Manage your personal identity credentials used to draft and automatically dispatch suppression filings via Gmail.'}
+          </p>
+        </div>
+
+        {/* Language Selector */}
+        <div className="flex flex-col gap-1.5 items-start md:items-end shrink-0">
+          <span className="text-[9px] font-bold text-[#666] uppercase tracking-wider">
+            {language === 'el' ? 'ΓΛΩΣΣΑ / LANGUAGE' : 'LANGUAGE / ΓΛΩΣΣΑ'}
+          </span>
+          <div className="flex items-center gap-1 bg-black border border-[#1a1a1a] rounded-lg p-0.5">
+            <button
+              type="button"
+              onClick={() => onLanguageChange('el')}
+              className={`px-3 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                language === 'el' ? 'bg-[#d4af37] text-black font-extrabold shadow-sm' : 'text-[#666] hover:text-white'
+              }`}
+            >
+              ΕΛΛΗΝΙΚΑ
+            </button>
+            <button
+              type="button"
+              onClick={() => onLanguageChange('en')}
+              className={`px-3 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                language === 'en' ? 'bg-[#d4af37] text-black font-extrabold shadow-sm' : 'text-[#666] hover:text-white'
+              }`}
+            >
+              ENGLISH
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Grid layouts splitting Google Auth from Profile Demographics */}
