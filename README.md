@@ -244,20 +244,7 @@ Lotos supports automated background scans to detect broker responses and manage 
 - **Resubmit Cycles**: Change the resubmission interval (2, 3, 4, 6, 9, or 12 months) via the dropdown selector in the **Settings & Governance** tab.
 - **Immediate Triggers**: Force an immediate inbox and resubmission sweep at any time by clicking the **Trigger Sweep Now** button in Settings or by executing individual resubmissions from the Dashboard.
 - **Environment Variables**: The default parameters can be customized in your `.env` file:
-  - `DISABLE_INTERNAL_SWEEP="true"` (to disable the internal scheduler entirely)
   - `SWEEP_INTERVAL_HOURS="12"` (to set the default background check interval)
-
-### Alternative: External Cron Job (Optional)
-If you prefer using an external system scheduler (e.g., system crontab), set `DISABLE_INTERNAL_SWEEP="true"` in your `.env` and configure a cron job to invoke the sweep API endpoint:
-
-1. Open your system's crontab:
-   ```bash
-   crontab -e
-   ```
-2. Add a line to trigger the endpoint (e.g., every 12 hours) passing your passcode in the `Authorization` header:
-   ```bash
-   0 */12 * * * curl -s -H "Authorization: Bearer <LOTOS_PASSWORD>" http://localhost:3000/api/cron/sweep > /dev/null
-   ```
 
 ---
 
