@@ -468,10 +468,21 @@ async function startServer() {
           history: state.history || null,
           googleUser: state.googleUser || null,
           hasGoogleToken: !!state.googleTokenData,
-          brokers: state.brokers || null
+          brokers: state.brokers || null,
+          settings: state.settings || null,
+          lastSweepTime: state.lastSweepTime || 0
         });
       } else {
-        res.json({ profile: null, trackingData: null, history: null, googleUser: null, hasGoogleToken: false, brokers: null });
+        res.json({
+          profile: null,
+          trackingData: null,
+          history: null,
+          googleUser: null,
+          hasGoogleToken: false,
+          brokers: null,
+          settings: null,
+          lastSweepTime: 0
+        });
       }
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Failed to load state" });
@@ -480,7 +491,7 @@ async function startServer() {
 
   app.post("/api/state/sync", (req, res) => {
     try {
-      const { profile, trackingData, history, clearGoogleToken, brokers } = req.body;
+      const { profile, trackingData, history, clearGoogleToken, brokers, settings } = req.body;
       const statePath = getStatePath();
       let currentState: any = {};
       
@@ -496,6 +507,7 @@ async function startServer() {
       if (trackingData) currentState.trackingData = trackingData;
       if (history) currentState.history = history;
       if (brokers) currentState.brokers = brokers;
+      if (settings) currentState.settings = settings;
       
       if (clearGoogleToken) {
         delete currentState.googleTokenData;
@@ -509,22 +521,29 @@ async function startServer() {
     }
   });
 
-  // Automated background sweep runner endpoint
-  app.get("/api/cron/sweep", async (req, res) => {
+  // Shared sweep execution logic
+  let isSweeping = false;
+  async function executeSweepInternal(): Promise<{ success: boolean; logs: string[] }> {
     const logs: string[] = [];
     logs.push(`[${new Date().toISOString()}] Initiating background privacy check...`);
     
+    if (isSweeping) {
+      logs.push("Another sweep is currently in progress. Skipping.");
+      return { success: false, logs };
+    }
+    
     try {
+      isSweeping = true;
       const statePath = getStatePath();
       if (!fs.existsSync(statePath)) {
-        return res.status(404).json({ error: "No state configuration found on the server." });
+        throw new Error("No state configuration found on the server.");
       }
       
       const state = JSON.parse(fs.readFileSync(statePath, "utf-8"));
       const tokenData = state.googleTokenData;
       
       if (!tokenData || !tokenData.refresh_token) {
-        return res.status(400).json({ error: "No active Google credentials/refresh token found on server." });
+        throw new Error("No active Google credentials/refresh token found on server.");
       }
       
       // 1. Refresh Gmail access token
@@ -561,8 +580,9 @@ async function startServer() {
       
       if (pendingBrokerIds.length === 0) {
         logs.push("No brokers are currently set to 'pending'. Skipping Gmail sweeps.");
+        state.lastSweepTime = Date.now();
         fs.writeFileSync(statePath, JSON.stringify(state, null, 2), "utf-8");
-        return res.json({ success: true, logs });
+        return { success: true, logs };
       }
       
       logs.push(`Found ${pendingBrokerIds.length} pending requests. Auditing inbox...`);
@@ -635,14 +655,27 @@ async function startServer() {
         state.trackingData['default'] = tracking;
       }
       
+      state.lastSweepTime = Date.now();
       fs.writeFileSync(statePath, JSON.stringify(state, null, 2), "utf-8");
       logs.push("Sweep operations completed.");
-      res.json({ success: true, logs });
+      return { success: true, logs };
       
     } catch (err: any) {
       logs.push(`Critical failure during execution: ${err.message || err}`);
       console.error("Cron sweep error:", err);
-      res.status(500).json({ error: err.message || "Background sweep failed", logs });
+      return { success: false, logs };
+    } finally {
+      isSweeping = false;
+    }
+  }
+
+  // Automated background sweep runner endpoint
+  app.get("/api/cron/sweep", async (req, res) => {
+    const result = await executeSweepInternal();
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(500).json(result);
     }
   });
 
@@ -787,6 +820,46 @@ async function startServer() {
     });
     console.log("Started in production mode serving static dist files.");
   }
+
+  // Start dynamic internal background sweep loop
+  let initialSweepChecked = false;
+  setInterval(async () => {
+    try {
+      const statePath = getStatePath();
+      if (!fs.existsSync(statePath)) return;
+      
+      const state = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+      const settings = state.settings || {};
+      
+      const disableSweep = settings.disableInternalSweep ?? (process.env.DISABLE_INTERNAL_SWEEP === "true");
+      if (disableSweep) return;
+      
+      const intervalHours = settings.sweepIntervalHours ?? parseFloat(process.env.SWEEP_INTERVAL_HOURS || "12");
+      const intervalMs = Math.max(1, intervalHours) * 60 * 60 * 1000;
+      
+      const lastSweep = state.lastSweepTime || 0;
+      const now = Date.now();
+      
+      // Run on startup if never run before
+      if (!initialSweepChecked) {
+        initialSweepChecked = true;
+        if (lastSweep === 0) {
+          console.log(`[Scheduler] No previous sweep recorded. Running initial startup sweep...`);
+          const result = await executeSweepInternal();
+          console.log(`[Scheduler] Initial startup sweep complete. Success: ${result.success}`);
+          return;
+        }
+      }
+      
+      if (now - lastSweep >= intervalMs) {
+        console.log(`[Scheduler] Sweep interval elapsed (${intervalHours} hours). Running background sweep...`);
+        const result = await executeSweepInternal();
+        console.log(`[Scheduler] Background sweep complete. Success: ${result.success}`);
+      }
+    } catch (err) {
+      console.error("[Scheduler] Error in scheduled background sweep loop:", err);
+    }
+  }, 60000);
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Lotos server is listening on http://0.0.0.0:${PORT}`);

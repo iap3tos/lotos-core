@@ -191,18 +191,25 @@ The container maps port `3000` to your host and mounts a named Docker volume (`l
 
 ---
 
-## Background Deletion Sweeps (Cron Setup)
+## Background Deletion Sweeps
 
-Lotos supports automated background scans to detect when a data broker replies to your pending opt-out requests. This runs silently on your server using standard local system schedulers.
+Lotos supports automated background scans to detect when a data broker replies to your pending opt-out requests. This runs silently in the background on your server using an internal dynamic scheduler.
 
 ### How it Works
 1. When you authenticate with Google, Lotos securely caches your Gmail API refresh token in the server's local `state.json`.
-2. A background timer triggers `/api/cron/sweep` on your server.
-3. The server refreshes the credentials, searches Gmail for new messages from any broker in a **Pending** status, and updates their status to **Action Required** if a reply is received.
+2. A background scheduler loop on the server checks every minute whether the configured interval (defaulting to **12 hours**) has elapsed since the last sweep.
+3. When the interval is reached, the server refreshes the credentials, searches Gmail for new messages from any broker in a **Pending** status, and updates their status to **Action Required** if a reply is received.
 4. When you open the application, Lotos automatically syncs the updated state from the server to your browser interface.
 
-### Setting up the Cron Job
-To automate this, add a system cron job to query the local server endpoint periodically:
+### Configuration & Manual Triggers
+- **Configure Frequency:** You can enable/disable background sweeps and adjust the hourly sweep interval directly from the **Settings & Governance** tab in the web UI.
+- **Trigger Manually:** You can also trigger an immediate sweep at any time by clicking the **Trigger Sweep Now** button in the Settings page.
+- **Environment Variables:** The defaults can be set via environment variables in your `.env` file:
+  - `DISABLE_INTERNAL_SWEEP="true"` (to disable the internal scheduler entirely)
+  - `SWEEP_INTERVAL_HOURS="12"` (to set the default hourly frequency)
+
+### Alternative: External Cron Job (Optional)
+If you prefer to run sweeps via an external system scheduler (e.g., system crontab), you can set `DISABLE_INTERNAL_SWEEP="true"` in your `.env` and trigger the API endpoint manually:
 
 1. Open your system's crontab editor:
    ```bash

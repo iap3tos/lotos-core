@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { ProfileDetails, TrackingData, HistoryItem, Broker } from '../types';
 import { TRANSLATIONS, Language } from '../data/translations';
 import { Download, Upload, Trash2, History, ShieldAlert, Sparkles, HelpCircle, HardDrive, Cpu, X, AlertTriangle, CheckCircle } from 'lucide-react';
@@ -14,6 +14,10 @@ interface SettingsPanelProps {
   isAuthRequired: boolean;
   brokers: Broker[];
   onUpdateBrokers: (brokers: Broker[]) => void;
+  sweepIntervalHours: number;
+  disableInternalSweep: boolean;
+  lastSweepTime: number;
+  onUpdateSweepSettings: (interval: number, disabled: boolean) => void;
 }
 
 const validateBrokers = (data: any): data is Broker[] => {
@@ -39,6 +43,10 @@ export default function SettingsPanel({
   isAuthRequired,
   brokers,
   onUpdateBrokers,
+  sweepIntervalHours,
+  disableInternalSweep,
+  lastSweepTime,
+  onUpdateSweepSettings,
 }: SettingsPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const brokerFileInputRef = useRef<HTMLInputElement>(null);
@@ -51,6 +59,17 @@ export default function SettingsPanel({
   // Duplicates modal states
   const [duplicateBrokers, setDuplicateBrokers] = useState<Broker[]>([]);
   const [pendingImportList, setPendingImportList] = useState<Broker[]>([]);
+
+  // Settings states
+  const [localInterval, setLocalInterval] = useState(sweepIntervalHours);
+  const [localDisabled, setLocalDisabled] = useState(disableInternalSweep);
+  const [settingsFeedback, setSettingsFeedback] = useState<string | null>(null);
+  const [isSweeping, setIsSweeping] = useState(false);
+
+  useEffect(() => {
+    setLocalInterval(sweepIntervalHours);
+    setLocalDisabled(disableInternalSweep);
+  }, [sweepIntervalHours, disableInternalSweep]);
 
   // Trigger JSON file downloads
   const handleExportBackup = () => {
@@ -207,6 +226,44 @@ export default function SettingsPanel({
     setPendingImportList([]);
   };
 
+  const handleSaveSettings = () => {
+    onUpdateSweepSettings(localInterval, localDisabled);
+    setSettingsFeedback(
+      language === 'el' 
+        ? '✅ Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!' 
+        : '✅ Settings saved successfully!'
+    );
+    setTimeout(() => setSettingsFeedback(null), 5000);
+  };
+
+  const handleManualSweep = async () => {
+    setIsSweeping(true);
+    setSettingsFeedback(null);
+    try {
+      const res = await fetch('/api/cron/sweep');
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSettingsFeedback(
+          language === 'el' 
+            ? '✅ Η σάρωση ολοκληρώθηκε επιτυχώς!' 
+            : '✅ Sweep completed successfully!'
+        );
+        onUpdateSweepSettings(localInterval, localDisabled);
+      } else {
+        throw new Error(data.error || 'Unknown error');
+      }
+    } catch (err: any) {
+      setSettingsFeedback(
+        language === 'el'
+          ? `❌ Αποτυχία σάρωσης: ${err.message || err}`
+          : `❌ Sweep failed: ${err.message || err}`
+      );
+    } finally {
+      setIsSweeping(false);
+      setTimeout(() => setSettingsFeedback(null), 5000);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-fade-in" id="settings-tab">
       
@@ -318,7 +375,7 @@ export default function SettingsPanel({
         </div>
 
         {/* Panel 3: Broker Directory Management */}
-        <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5 shadow-xs space-y-5 lg:col-span-2 font-sans">
+        <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5 shadow-xs space-y-5 font-sans">
           <div className="flex items-center gap-2 border-b border-[#1a1a1a]/60 pb-3 mb-1">
             <Sparkles size={18} className="text-[#d4af37]" />
             <h3 className="text-sm font-serif text-white uppercase tracking-wider">{toGreekUppercase(TRANSLATIONS[language].brokerManagement)}</h3>
@@ -356,6 +413,87 @@ export default function SettingsPanel({
               {brokerImportFeedback}
             </div>
           )}
+        </div>
+
+        {/* Panel 4: Background Sweep Settings */}
+        <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5 shadow-xs space-y-5 font-sans">
+          <div className="flex items-center gap-2 border-b border-[#1a1a1a]/60 pb-3 mb-1">
+            <Cpu size={18} className="text-[#d4af37]" />
+            <h3 className="text-sm font-serif text-white uppercase tracking-wider">
+              {language === 'el' ? 'ΑΥΤΟΜΑΤΕΣ ΣΑΡΩΣΕΙΣ GMAIL' : 'AUTOMATED GMAIL SWEEPS'}
+            </h3>
+          </div>
+
+          <p className="text-xs text-[#888] leading-relaxed">
+            {language === 'el'
+              ? 'Ρυθμίστε τη συχνότητα με την οποία ο Λωτός θα ελέγχει το Gmail σας στο υπόβαθρο για απαντήσεις από data brokers.'
+              : 'Configure how frequently Lotos checks your Gmail inbox in the background for opt-out responses.'}
+          </p>
+
+          <div className="space-y-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!localDisabled}
+                onChange={(e) => setLocalDisabled(!e.target.checked)}
+                className="w-4 h-4 rounded border-[#1a1a1a] bg-black text-[#d4af37] focus:ring-[#d4af37]/30"
+              />
+              <span className="text-xs font-semibold text-white">
+                {language === 'el' ? 'Ενεργοποίηση αυτόματων σαρώσεων' : 'Enable background sweeps'}
+              </span>
+            </label>
+
+            {!localDisabled && (
+              <div className="space-y-1.5">
+                <span className="text-xs text-[#666] font-medium block">
+                  {language === 'el' ? 'Συχνότητα σάρωσης (Ώρες):' : 'Sweep Interval (Hours):'}
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  max="168"
+                  value={localInterval}
+                  onChange={(e) => setLocalInterval(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full sm:w-32 bg-black border border-[#1a1a1a] text-white text-xs rounded-lg p-2.5 focus:border-[#d4af37]/50 focus:outline-none"
+                />
+              </div>
+            )}
+
+            <div className="text-[11px] text-[#666] flex flex-col gap-1">
+              <div>
+                {language === 'el' ? 'Τελευταία σάρωση:' : 'Last sweep run:'}{' '}
+                <strong className="text-[#888]">
+                  {lastSweepTime > 0 ? new Date(lastSweepTime).toLocaleString() : (language === 'el' ? 'Ποτέ' : 'Never')}
+                </strong>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <button
+                onClick={handleSaveSettings}
+                className="flex-1 bg-[#d4af37] hover:bg-[#c4a030] text-black text-xs font-bold py-2.5 px-4 rounded-lg shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer font-sans"
+              >
+                {language === 'el' ? 'Αποθήκευση Ρυθμίσεων' : 'Save Settings'}
+              </button>
+
+              <button
+                onClick={handleManualSweep}
+                disabled={isSweeping}
+                className={`flex-1 bg-[#111] border border-[#1a1a1a] hover:bg-[#1a1a1a] text-[#888] hover:text-white hover:border-[#d4af37]/30 text-xs font-bold py-2.5 px-4 rounded-lg shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer font-sans ${isSweeping ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <Cpu size={14} className={isSweeping ? 'animate-spin text-[#d4af37]' : ''} />
+                {isSweeping 
+                  ? (language === 'el' ? 'Σάρωση σε εξέλιξη...' : 'Sweeping...') 
+                  : (language === 'el' ? 'Έναρξη Σάρωσης Τώρα' : 'Trigger Sweep Now')}
+              </button>
+            </div>
+
+            {settingsFeedback && (
+              <div className={`p-3 rounded-lg text-xs leading-relaxed font-semibold font-sans mt-3 ${settingsFeedback.includes('❌') ? 'bg-red-955/20 text-red-400 border border-red-900/30' : 'bg-emerald-950/20 text-emerald-400 border border-emerald-900/30'}`}>
+                {settingsFeedback}
+              </div>
+            )}
+          </div>
         </div>
 
       </div>

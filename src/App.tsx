@@ -171,6 +171,10 @@ export default function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   
+  const [sweepIntervalHours, setSweepIntervalHours] = useState<number>(12);
+  const [disableInternalSweep, setDisableInternalSweep] = useState<boolean>(false);
+  const [lastSweepTime, setLastSweepTime] = useState<number>(0);
+  
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Hoist initApp so we can call it on mount and after successful authentication
@@ -236,6 +240,14 @@ export default function App() {
           localStorage.setItem(LOCAL_STORAGE_KEY_TRACKING, JSON.stringify(serverState.trackingData || {}));
           localStorage.setItem(LOCAL_STORAGE_KEY_HISTORY, JSON.stringify(serverState.history || []));
           
+          if (serverState.settings) {
+            setSweepIntervalHours(serverState.settings.sweepIntervalHours ?? 12);
+            setDisableInternalSweep(serverState.settings.disableInternalSweep ?? false);
+          }
+          if (serverState.lastSweepTime) {
+            setLastSweepTime(serverState.lastSweepTime);
+          }
+
           if (serverState.hasGoogleToken && serverState.googleUser) {
             setGoogleUser(serverState.googleUser);
             setGoogleToken("server-managed");
@@ -254,6 +266,14 @@ export default function App() {
     if (localBrokers) {
       try { setBrokers(JSON.parse(localBrokers)); } catch(e) {}
     }
+    
+    const localInterval = localStorage.getItem('lotos_sweep_interval_hours');
+    if (localInterval) setSweepIntervalHours(parseInt(localInterval) || 12);
+    const localDisable = localStorage.getItem('lotos_disable_internal_sweep');
+    if (localDisable) setDisableInternalSweep(localDisable === 'true');
+    const localLastSweep = localStorage.getItem('lotos_last_sweep_time');
+    if (localLastSweep) setLastSweepTime(parseInt(localLastSweep) || 0);
+
     if (rawProfiles && rawTracking && rawHistory) {
       try {
         const parsed = JSON.parse(rawProfiles);
@@ -405,6 +425,37 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ brokers: updatedBrokers })
     }).catch(err => console.warn("Failed to sync brokers:", err));
+  };
+
+  const handleUpdateSweepSettings = (interval: number, disabled: boolean) => {
+    setSweepIntervalHours(interval);
+    setDisableInternalSweep(disabled);
+    localStorage.setItem('lotos_sweep_interval_hours', String(interval));
+    localStorage.setItem('lotos_disable_internal_sweep', String(disabled));
+    
+    fetch('/api/state/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        settings: {
+          sweepIntervalHours: interval,
+          disableInternalSweep: disabled
+        }
+      })
+    })
+    .then(async (res) => {
+      if (res.ok) {
+        const syncRes = await fetch('/api/state/sync');
+        if (syncRes.ok) {
+          const syncState = await syncRes.json();
+          if (syncState.lastSweepTime) {
+            setLastSweepTime(syncState.lastSweepTime);
+            localStorage.setItem('lotos_last_sweep_time', String(syncState.lastSweepTime));
+          }
+        }
+      }
+    })
+    .catch(err => console.warn("Failed to sync sweep settings:", err));
   };
 
   // --- ACTIONS HANDLERS ---
@@ -896,6 +947,10 @@ export default function App() {
             isAuthRequired={isAuthRequired}
             brokers={brokers}
             onUpdateBrokers={saveBrokersToStorage}
+            sweepIntervalHours={sweepIntervalHours}
+            disableInternalSweep={disableInternalSweep}
+            lastSweepTime={lastSweepTime}
+            onUpdateSweepSettings={handleUpdateSweepSettings}
           />
         )}
 
