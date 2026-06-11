@@ -201,26 +201,41 @@ npm run start
 ```
 
 ### Running with Docker (Recommended for Self-Hosting)
-Lotos includes a `Dockerfile` and a `docker-compose.yml` to bundle and deploy easily as a container.
 
-1. **Configure Environment Variables**:
-   By default, Lotos is configured to read values from a local `.env` file in the same directory.
-   - **Using `.env`**: Create a `.env` file in the root directory (based on `.env.example`) and fill in your keys.
-   - **Using Inline Configuration**: Alternatively, if you are hosting Lotos on a personal home server (e.g., via Portainer or Synology UI), you can skip the `.env` file entirely and replace the `${VARIABLE_NAME}` entries directly with your actual keys and passwords inside the `docker-compose.yml` environment block.
+You can self-host Lotos using Docker either by pulling the pre-built image from GitHub Container Registry (GHCR) or by building it locally.
 
-2. **Build and Start Container**:
-   Build the image and launch the container in detached mode:
+#### Option A: Pull Pre-built Image (Easiest & Fastest)
+You do not need to clone the repository or install Node.js locally.
+
+1. **Download the Docker Compose file**:
+   Save the [docker-compose.example.yml](file:///home/iap3tos/lotos-core/docker-compose.example.yml) template as `docker-compose.yml` on your server.
+2. **Configure Environment Variables**:
+   Create a `.env` file in the same directory (based on `.env.example`) or edit the `environment` variables block directly in your `docker-compose.yml` file.
+3. **Start the Container**:
+   ```bash
+   docker compose up -d
+   ```
+
+#### Option B: Build Locally (For Development)
+If you want to customize the source code before running:
+
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/iap3tos/lotos-core.git
+   cd lotos-core
+   ```
+2. **Configure Environment Variables**:
+   Create a `.env` file based on `.env.example` in the root directory.
+3. **Build and Run**:
    ```bash
    docker compose up -d --build
    ```
 
-3. **Verify running status**:
-   Ensure the container is running:
-   ```bash
-   docker compose ps
-   ```
-
-The container maps port `3000` to your host and mounts a named Docker volume (`lotos-data`) to persist your tracking state and profile credentials in `/app/data/state.json`.
+### Verifying and Accessing Lotos
+Regardless of the method chosen:
+* **Verify running status**: `docker compose ps`
+* **Access the web UI**: Open [http://localhost:3000](http://localhost:3000) in your browser.
+* **Data Persistence**: The container maps port `3000` to the host and mounts a named Docker volume (`lotos-data`) to persist your tracking state and profile credentials securely in `/app/data/state.json`.
 
 ---
 

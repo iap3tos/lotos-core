@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  lotos:
+    image: ghcr.io/iap3tos/lotos-core:latest
+    container_name: lotos-core
+    ports:
+      - "3000:3000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}          # OR replace with your Gemini API key directly
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}      # OR replace with your Google Client ID directly
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}  # OR replace with your Google Client Secret directly
+      - LOTOS_PASSWORD=${LOTOS_PASSWORD}          # OR replace with your passcode directly (e.g., my_pass)
+      - SESSION_SECRET=${SESSION_SECRET}          # OR replace with a secure random key directly (optional)
+      - NODE_ENV=production
+    volumes:
+      # Mount named volume to persist state.json containing profiles and credentials
+      - lotos-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  lotos-data:
