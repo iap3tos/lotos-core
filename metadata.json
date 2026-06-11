@@ -1,0 +1,6 @@
+{
+  "name": "Lotos",
+  "description": "A self-hosted, private workspace named Lotos (Λωτός) to coordinate, draft, send, and track personal data broker removals for yourself using your Google account and Gmail API safely.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
