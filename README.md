@@ -15,7 +15,7 @@
 
 ---
 
-**Lotos (Λωτός)** is an AI-powered, self-hosted personal privacy agent designed to help individuals locate, request deletion from, and track their opt-out status across major data brokers, people-search directories, recruitment crawlers, and adtech trackers.
+**Lotos (Λωτός)** is self-hosted personal privacy agent designed to help individuals locate, request deletion from, and track their opt-out status across major data brokers, people-search directories, recruitment crawlers, and adtech trackers with optional AI-powered compliance advisor.
 
 Unlike commercial privacy services that require you to share your sensitive profiles, passwords, and billing information with yet another centralized database, Lotos operates **entirely locally**. Your personal identity profile, tracking history, and advisor chat logs never leave your browser’s local storage. The companion Node.js/Express server functions exclusively as a secure API broker for the Gemini LLM and the Gmail sending integration.
 
@@ -202,40 +202,31 @@ npm run start
 
 ### Running with Docker (Recommended for Self-Hosting)
 
-You can self-host Lotos using Docker either by pulling the pre-built image from GitHub Container Registry (GHCR) or by building it locally.
+Lotos is packaged as a pre-built Docker image. You do not need to clone the repository or install Node.js locally.
 
-#### Option A: Pull Pre-built Image (Easiest & Fastest)
-You do not need to clone the repository or install Node.js locally.
+1. **Create a `docker-compose.yml` file**:
+   Copy the [docker-compose.example.yml](file:///home/iap3tos/lotos-core/docker-compose.example.yml) template and save it as `docker-compose.yml` on your server.
 
-1. **Download the Docker Compose file**:
-   Save the [docker-compose.example.yml](file:///home/iap3tos/lotos-core/docker-compose.example.yml) template as `docker-compose.yml` on your server.
-2. **Configure Environment Variables**:
-   Create a `.env` file in the same directory (based on `.env.example`) or edit the `environment` variables block directly in your `docker-compose.yml` file.
-3. **Start the Container**:
+2. **Configure the Passcode**:
+   In your `docker-compose.yml`, set the `LOTOS_PASSWORD` environment variable to your desired login passcode. (You can also create a `.env` file in the same directory containing `LOTOS_PASSWORD=your_passcode`).
+   
+   > [!NOTE]
+   > **API Keys & Credentials:** You do **not** need to set Google keys or Gemini API keys in the Docker environment. These are configured directly inside the application settings wizard after logging in.
+
+3. **Start the application**:
    ```bash
    docker compose up -d
    ```
 
-#### Option B: Build Locally (For Development)
-If you want to customize the source code before running:
+4. **Access Lotos**:
+   * Open [http://localhost:3000](http://localhost:3000) in your browser.
+   * Log in using the passcode you set for `LOTOS_PASSWORD`.
+   * Follow the in-app wizard to configure your Google OAuth integration and Gemini compliance assistant key.
 
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/iap3tos/lotos-core.git
-   cd lotos-core
-   ```
-2. **Configure Environment Variables**:
-   Create a `.env` file based on `.env.example` in the root directory.
-3. **Build and Run**:
-   ```bash
-   docker compose up -d --build
-   ```
-
-### Verifying and Accessing Lotos
-Regardless of the method chosen:
-* **Verify running status**: `docker compose ps`
-* **Access the web UI**: Open [http://localhost:3000](http://localhost:3000) in your browser.
-* **Data Persistence**: The container maps port `3000` to the host and mounts a named Docker volume (`lotos-data`) to persist your tracking state and profile credentials securely in `/app/data/state.json`.
+* **Data Persistence & Updates**: Your profile data, opt-out history, and API configurations are saved securely inside a local Docker volume (`lotos-data`). To update Lotos to the latest version in the future, simply run:
+  ```bash
+  docker compose pull && docker compose up -d
+  ```
 
 ---
 
