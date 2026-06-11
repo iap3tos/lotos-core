@@ -112,39 +112,72 @@ GOOGLE_CLIENT_SECRET="GOCSPX-XXXXXXXXXXXXXXXXXXXXXXX"
 
 ---
 
-## Google Cloud Setup
+## Google Cloud Setup (Step-by-Step for Beginners)
 
-To enable digital dispatching (sending emails via Gmail API) and automatic status checking, you must configure a Google Cloud project to obtain OAuth credentials.
+To allow Lotos to send opt-out emails and scan for broker responses, you must link it with your Google Account. Because this app is private and self-hosted on your own computer/server, Google requires you to create your own "private gateway key" (OAuth Client ID and Client Secret).
+
+Follow these exact steps to get your keys in 5 minutes:
 
 ### Step 1: Create a Google Cloud Project
-1. Navigate to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Click **Create Project**, name it `Lotos Privacy Shield` (or any custom identifier), and select your billing account (it operates under Google's free tier quotas).
+1. Open the [Google Cloud Console](https://console.cloud.google.com/) in your browser and log in with your Gmail account.
+2. At the top of the page, click the project dropdown (it might say **Select a project**, or show a default project name).
+3. A popup will open. Click the **New Project** button in the top-right of that popup.
+4. Fill in the **Project name** field with exactly: `Lotos Shield`
+5. Click **Create** at the bottom. Wait 5-10 seconds for the circle icon to finish spinning.
+6. A notification banner will appear saying "Project Created". Click **Select Project** in that notification, or use the top dropdown to select your new `Lotos Shield` project.
 
-### Step 2: Enable Google APIs
-1. In your project, navigate to **APIs & Services** > **Library**.
-2. Search for and **Enable** the following APIs:
-   - **Gmail API** (needed to send opt-outs and read reply statuses).
-   - **Google People API** / **User Profile API** (needed to sync profile name/avatar).
+---
+
+### Step 2: Turn on Google APIs
+You need to tell Google to allow Lotos to access your Gmail and Profile.
+1. Click the **Navigation Menu** (the three horizontal lines icon in the top-left corner of the page).
+2. Hover over **APIs & Services** and click on **Library**.
+3. In the search box in the center, type `Gmail API` and press Enter.
+4. Click on the card that says **Gmail API**, then click the blue **Enable** button.
+5. Once enabled, click the back arrow at the top or go back to the **Library** search.
+6. In the search box, type `Google People API` and press Enter.
+7. Click on the card that says **Google People API**, then click the blue **Enable** button.
+
+---
 
 ### Step 3: Configure the OAuth Consent Screen
-1. Go to **APIs & Services** > **OAuth consent screen**.
-2. Set the User Type to **External**.
-3. Fill out the application details (e.g., App Name: `Lotos Core`, Support Email: your email).
-4. Under **Scopes**, click **Add or Remove Scopes** and add the following:
-   - `openid` (User profile identifier)
-   - `.../auth/userinfo.email` (View email address)
-   - `.../auth/userinfo.profile` (View basic profile details)
-   - `https://www.googleapis.com/auth/gmail.send` (Send emails on your behalf)
-   - `https://www.googleapis.com/auth/gmail.readonly` (Read message headers to verify replies)
-5. Under **Test Users**, add your personal Google/Gmail address. Since the application remains in "Testing" mode on your personal console, only defined test accounts can log in.
+This step tells Google what name to show when you sign in.
+1. Click the **Navigation Menu** (three lines, top-left), hover over **APIs & Services**, and click **OAuth consent screen**.
+2. Under "User Type", select **External** (it is the only option available for free personal accounts). Click **Create**.
+3. Under **App information**, fill in:
+   * **App name**: type exactly `Lotos App`
+   * **User support email**: select your Gmail address from the dropdown list.
+4. Scroll all the way to the bottom of the page to **Developer contact information** and type your personal email address in the box.
+5. Click **Save and Continue**.
+6. **Scopes Page:** Scroll to the bottom and click **Save and Continue** (Lotos requests these dynamically at login, no setup needed here).
+7. **Test Users Page (CRITICAL STEP):**
+   * Since this is a private personal app, Google blocks all logins unless you list them.
+   * Click **+ ADD USERS**.
+   * Type your exact Gmail address in the box.
+   * Click **Add** (or press Enter), then click **Save and Continue**.
+8. Scroll to the bottom of the summary page and click **Back to Dashboard**.
 
-### Step 4: Generate OAuth Credentials
-1. Go to **APIs & Services** > **Credentials**.
-2. Click **Create Credentials** > **OAuth client ID**.
-3. Select Application Type: **Web application**.
-4. Add the following to **Authorized Redirect URIs**:
-   - `http://localhost:3000/api/auth/google/callback` (or your production domain callback path).
-5. Click **Create** and copy your **Client ID** and **Client Secret** into your `.env` file.
+---
+
+### Step 4: Generate your Gateway Keys
+1. In the left-hand menu, click **Credentials**.
+2. Click the **+ Create Credentials** button at the top of the page, and select **OAuth client ID** from the dropdown.
+3. Under **Application type**, select **Web application** from the dropdown list.
+4. In the **Name** field, type exactly `Lotos Web Server`
+5. Scroll down to the bottom section called **Authorized redirect URIs**.
+6. Click the **+ ADD URI** button under that section.
+7. Paste this exact text into the text box:
+   ```
+   http://localhost:3000/api/auth/google/callback
+   ```
+   *(Note: If you host Lotos on a home server or custom NAS domain, replace `http://localhost:3000` with your actual server IP/domain, keeping the `/api/auth/google/callback` suffix).*
+8. Click **Create** at the bottom of the page.
+9. A popup titled **OAuth client created** will appear showing your keys!
+   * Copy the **Client ID** and paste it into the `GOOGLE_CLIENT_ID` setting in your `.env` or `docker-compose.yml`.
+   * Copy the **Client Secret** and paste it into the `GOOGLE_CLIENT_SECRET` setting in your `.env` or `docker-compose.yml`.
+
+> [!TIP]
+> **Safety First:** Your Client ID and Client Secret are completely private. Because you created them inside your own Google Account, they belong 100% to you and are never shared with anyone.
 
 ---
 
@@ -191,31 +224,37 @@ The container maps port `3000` to your host and mounts a named Docker volume (`l
 
 ---
 
-## Background Deletion Sweeps
+## Background Deletion Sweeps & Resubmission Tracking
 
-Lotos supports automated background scans to detect when a data broker replies to your pending opt-out requests. This runs silently in the background on your server using an internal dynamic scheduler.
+Lotos supports automated background scans to detect broker responses and manage automatic data broker deletion resubmissions. Because data brokers frequently re-acquire and re-list your personal data, unlistings require periodic re-verification. Lotos manages this cycle automatically using an internal dynamic scheduler.
 
 ### How it Works
-1. When you authenticate with Google, Lotos securely caches your Gmail API refresh token in the server's local `state.json`.
-2. A background scheduler loop on the server checks every minute whether the configured interval (defaulting to **12 hours**) has elapsed since the last sweep.
-3. When the interval is reached, the server refreshes the credentials, searches Gmail for new messages from any broker in a **Pending** status, and updates their status to **Action Required** if a reply is received.
-4. When you open the application, Lotos automatically syncs the updated state from the server to your browser interface.
+1. **Gmail Authentication**: When you connect your Google Account, Lotos securely caches your encrypted Gmail API refresh token in the server's local `state.json`.
+2. **Background Scheduler**: A server-side scheduler loop runs every 60 seconds. It checks if the configured sweep interval (defaulting to **12 hours**) has elapsed since the last run.
+3. **Inbound Reply Checks**: During a sweep, Lotos searches your Gmail inbox for messages from any broker currently in a **Pending** status. If a new response is detected, the status updates to **Action Required** with the message snippet logged.
+4. **Resubmission Tracking**:
+   - When a broker is marked **Completed** (verified), a countdown timer is initialized based on the completion timestamp (`completedAt`).
+   - The default resubmission cycle is **3 months (90 days)**, but it is fully configurable in the settings panel from **2 to 12 months**.
+   - During background sweeps, the scheduler identifies brokers whose completion timestamp has expired beyond the configured interval.
+   - **Automated Resubmissions**: If the broker supports email unlisting (Email or Both) and Google OAuth is integrated, Gemini automatically drafts the request, dispatches it via the Gmail API on your behalf, and resets the status back to **Pending**.
+   - **Manual Resubmissions**: If Google OAuth is disconnected or the broker only supports web forms, Lotos highlights the broker under the dashboard's **Removal Resubmissions Due** alert card, providing quick links to launch opt-out forms or send emails manually.
 
 ### Configuration & Manual Triggers
-- **Configure Frequency:** You can enable/disable background sweeps and adjust the hourly sweep interval directly from the **Settings & Governance** tab in the web UI.
-- **Trigger Manually:** You can also trigger an immediate sweep at any time by clicking the **Trigger Sweep Now** button in the Settings page.
-- **Environment Variables:** The defaults can be set via environment variables in your `.env` file:
+- **Sweep Controls**: Enable or disable background sweeps and adjust the hourly check interval directly from the **Settings & Governance** tab.
+- **Resubmit Cycles**: Change the resubmission interval (2, 3, 4, 6, 9, or 12 months) via the dropdown selector in the **Settings & Governance** tab.
+- **Immediate Triggers**: Force an immediate inbox and resubmission sweep at any time by clicking the **Trigger Sweep Now** button in Settings or by executing individual resubmissions from the Dashboard.
+- **Environment Variables**: The default parameters can be customized in your `.env` file:
   - `DISABLE_INTERNAL_SWEEP="true"` (to disable the internal scheduler entirely)
-  - `SWEEP_INTERVAL_HOURS="12"` (to set the default hourly frequency)
+  - `SWEEP_INTERVAL_HOURS="12"` (to set the default background check interval)
 
 ### Alternative: External Cron Job (Optional)
-If you prefer to run sweeps via an external system scheduler (e.g., system crontab), you can set `DISABLE_INTERNAL_SWEEP="true"` in your `.env` and trigger the API endpoint manually:
+If you prefer using an external system scheduler (e.g., system crontab), set `DISABLE_INTERNAL_SWEEP="true"` in your `.env` and configure a cron job to invoke the sweep API endpoint:
 
-1. Open your system's crontab editor:
+1. Open your system's crontab:
    ```bash
    crontab -e
    ```
-2. Add a line to execute the sweep endpoint (e.g., every 12 hours). Pass your passcode in the `Authorization` header to authenticate:
+2. Add a line to trigger the endpoint (e.g., every 12 hours) passing your passcode in the `Authorization` header:
    ```bash
    0 */12 * * * curl -s -H "Authorization: Bearer <LOTOS_PASSWORD>" http://localhost:3000/api/cron/sweep > /dev/null
    ```

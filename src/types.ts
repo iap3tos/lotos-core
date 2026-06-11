@@ -37,6 +37,7 @@ export interface MemberRemovalState {
   status: RemovalStatus;
   updatedAt: string;
   notes: string;
+  completedAt?: string;
 }
 
 // Map from profileId -> brokerId -> action-state

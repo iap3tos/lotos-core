@@ -8,9 +8,10 @@ import OptOutPanel from './components/OptOutPanel';
 import GeminiAdvisor from './components/GeminiAdvisor';
 import SettingsPanel from './components/SettingsPanel';
 import { TRANSLATIONS, Language } from './data/translations';
-import { ShieldCheck, Users, Search, Sparkles, Settings, Menu, X, Landmark, FileText, User, LogOut, Mail, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, Users, Search, Sparkles, Settings, Menu, X, Landmark, FileText, User, LogOut, Mail, AlertTriangle, Cpu, Key, Lock, ChevronLeft, ChevronRight, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toGreekUppercase } from './utils/greekUtils';
 import Login from './components/Login';
+import logoUrl from '@/assets/logo.svg';
 
 const LOCAL_STORAGE_KEY_PROFILES = 'privacyshield_profiles_v1';
 const LOCAL_STORAGE_KEY_TRACKING = 'privacyshield_tracking_v1';
@@ -174,8 +175,64 @@ export default function App() {
   const [sweepIntervalHours, setSweepIntervalHours] = useState<number>(12);
   const [disableInternalSweep, setDisableInternalSweep] = useState<boolean>(false);
   const [lastSweepTime, setLastSweepTime] = useState<number>(0);
+  const [resubmitIntervalMonths, setResubmitIntervalMonths] = useState<number>(3);
+  const [geminiApiKey, setGeminiApiKey] = useState<string>('');
+  const [googleClientId, setGoogleClientId] = useState<string>('');
+  const [googleClientSecret, setGoogleClientSecret] = useState<string>('');
+  const [wizardDismissed, setWizardDismissed] = useState<boolean>(() => {
+    return localStorage.getItem('lotos_wizard_dismissed') === 'true';
+  });
   
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Global Setup Wizard Modal States
+  const [isWizardModalOpen, setIsWizardModalOpen] = useState(false);
+  const [wizardModalStep, setWizardModalStep] = useState(1);
+  const [localGeminiKey, setLocalGeminiKey] = useState('');
+  const [localGoogleClientId, setLocalGoogleClientId] = useState('');
+  const [localGoogleClientSecret, setLocalGoogleClientSecret] = useState('');
+  const [showGeminiToggle, setShowGeminiToggle] = useState(false);
+  const [showGoogleToggle, setShowGoogleToggle] = useState(false);
+  const [isWizardSaving, setIsWizardSaving] = useState(false);
+
+  const handleOpenCredentialsWizard = () => {
+    setLocalGeminiKey(geminiApiKey);
+    setLocalGoogleClientId(googleClientId);
+    setLocalGoogleClientSecret(googleClientSecret);
+    setWizardModalStep(1);
+    setIsWizardModalOpen(true);
+  };
+
+  const handleSaveWizardCredentials = async () => {
+    setIsWizardSaving(true);
+    try {
+      await handleUpdateSweepSettings(
+        sweepIntervalHours,
+        disableInternalSweep,
+        resubmitIntervalMonths,
+        localGeminiKey,
+        localGoogleClientId,
+        localGoogleClientSecret
+      );
+      setWizardModalStep(4);
+    } catch (err) {
+      console.error("Failed to save credentials via wizard:", err);
+      alert(language === 'el' ? 'Αποτυχία αποθήκευσης ρυθμίσεων' : 'Failed to save settings');
+    } finally {
+      setIsWizardSaving(false);
+    }
+  };
+
+  const handleDismissWizard = () => {
+    setWizardDismissed(true);
+    localStorage.setItem('lotos_wizard_dismissed', 'true');
+  };
+
+  const handleRestoreWizard = () => {
+    setWizardDismissed(false);
+    localStorage.setItem('lotos_wizard_dismissed', 'false');
+    setActiveTab('settings');
+  };
 
   // Hoist initApp so we can call it on mount and after successful authentication
   const initApp = async () => {
@@ -243,6 +300,10 @@ export default function App() {
           if (serverState.settings) {
             setSweepIntervalHours(serverState.settings.sweepIntervalHours ?? 12);
             setDisableInternalSweep(serverState.settings.disableInternalSweep ?? false);
+            setResubmitIntervalMonths(serverState.settings.resubmitIntervalMonths ?? 3);
+            setGeminiApiKey(serverState.settings.geminiApiKey ?? '');
+            setGoogleClientId(serverState.settings.googleClientId ?? '');
+            setGoogleClientSecret(serverState.settings.googleClientSecret ?? '');
           }
           if (serverState.lastSweepTime) {
             setLastSweepTime(serverState.lastSweepTime);
@@ -273,6 +334,8 @@ export default function App() {
     if (localDisable) setDisableInternalSweep(localDisable === 'true');
     const localLastSweep = localStorage.getItem('lotos_last_sweep_time');
     if (localLastSweep) setLastSweepTime(parseInt(localLastSweep) || 0);
+    const localResubmit = localStorage.getItem('lotos_resubmit_interval_months');
+    if (localResubmit) setResubmitIntervalMonths(parseInt(localResubmit) || 3);
 
     if (rawProfiles && rawTracking && rawHistory) {
       try {
@@ -427,11 +490,29 @@ export default function App() {
     }).catch(err => console.warn("Failed to sync brokers:", err));
   };
 
-  const handleUpdateSweepSettings = (interval: number, disabled: boolean) => {
+  const handleUpdateSweepSettings = (
+    interval: number, 
+    disabled: boolean, 
+    resubmitInterval?: number,
+    geminiKey?: string,
+    clientId?: string,
+    clientSecret?: string
+  ) => {
     setSweepIntervalHours(interval);
     setDisableInternalSweep(disabled);
+    const activeResubmit = resubmitInterval !== undefined ? resubmitInterval : resubmitIntervalMonths;
+    setResubmitIntervalMonths(activeResubmit);
     localStorage.setItem('lotos_sweep_interval_hours', String(interval));
     localStorage.setItem('lotos_disable_internal_sweep', String(disabled));
+    localStorage.setItem('lotos_resubmit_interval_months', String(activeResubmit));
+
+    const updatedGeminiKey = geminiKey !== undefined ? geminiKey : geminiApiKey;
+    const updatedClientId = clientId !== undefined ? clientId : googleClientId;
+    const updatedClientSecret = clientSecret !== undefined ? clientSecret : googleClientSecret;
+
+    setGeminiApiKey(updatedGeminiKey);
+    setGoogleClientId(updatedClientId);
+    setGoogleClientSecret(updatedClientSecret);
     
     fetch('/api/state/sync', {
       method: 'POST',
@@ -439,7 +520,11 @@ export default function App() {
       body: JSON.stringify({ 
         settings: {
           sweepIntervalHours: interval,
-          disableInternalSweep: disabled
+          disableInternalSweep: disabled,
+          resubmitIntervalMonths: activeResubmit,
+          geminiApiKey: updatedGeminiKey,
+          googleClientId: updatedClientId,
+          googleClientSecret: updatedClientSecret
         }
       })
     })
@@ -481,12 +566,18 @@ export default function App() {
       updatedTracking['default'] = {};
     }
 
-    const previousStatus = updatedTracking['default'][brokerId]?.status || 'not_started';
+    const previousState = updatedTracking['default'][brokerId];
+    const previousStatus = previousState?.status || 'not_started';
+
+    const completedAtVal = newStatus === 'completed'
+      ? (previousStatus === 'completed' ? previousState?.completedAt || new Date().toISOString() : new Date().toISOString())
+      : undefined;
 
     updatedTracking['default'][brokerId] = {
       status: newStatus,
       updatedAt: new Date().toISOString(),
-      notes: notesText
+      notes: notesText,
+      completedAt: completedAtVal
     };
     saveTrackingToStorage(updatedTracking);
 
@@ -535,6 +626,11 @@ export default function App() {
     localStorage.removeItem(LOCAL_STORAGE_KEY_HISTORY);
     localStorage.removeItem(LOCAL_STORAGE_KEY_CHAT);
     localStorage.removeItem('lotos_brokers');
+    localStorage.removeItem('lotos_sweep_interval_hours');
+    localStorage.removeItem('lotos_disable_internal_sweep');
+    localStorage.removeItem('lotos_last_sweep_time');
+    localStorage.removeItem('lotos_resubmit_interval_months');
+    localStorage.removeItem('lotos_wizard_dismissed');
 
     const initialProfile = {
       id: 'default',
@@ -553,13 +649,35 @@ export default function App() {
     setHistory([]);
     setChatHistory([]);
     setBrokers(BROKERS_DATABASE);
+    setSweepIntervalHours(12);
+    setDisableInternalSweep(false);
+    setLastSweepTime(0);
+    setResubmitIntervalMonths(3);
+    setGeminiApiKey('');
+    setGoogleClientId('');
+    setGoogleClientSecret('');
+    setWizardDismissed(false);
     setActiveTab('profiles');
     
     // Purge server state too!
     fetch('/api/state/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile: initialProfile, trackingData: {}, history: [], brokers: BROKERS_DATABASE, clearGoogleToken: true })
+      body: JSON.stringify({ 
+        profile: initialProfile, 
+        trackingData: {}, 
+        history: [], 
+        brokers: BROKERS_DATABASE, 
+        clearGoogleToken: true,
+        settings: {
+          sweepIntervalHours: 12,
+          disableInternalSweep: false,
+          resubmitIntervalMonths: 3,
+          geminiApiKey: '',
+          googleClientId: '',
+          googleClientSecret: ''
+        }
+      })
     }).catch(err => console.warn("Failed to purge server state:", err));
   };
 
@@ -590,29 +708,15 @@ export default function App() {
             <button
               id="lotos-brand-btn"
               onClick={() => { setActiveTab('dashboard'); setFocusedBrokerId(null); }}
-              className="p-2.5 bg-[#0a0a0a] text-[#d4af37] hover:text-[#e5c158] rounded-xl border border-[#1a1a1a] hover:border-[#d4af37]/30 font-bold transition-all cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#d4af37]/50"
+              className="transition-all cursor-pointer focus:outline-none flex items-center justify-center hover:opacity-80"
               aria-label="Go to Home"
             >
-              <svg 
+              <img 
+                src={logoUrl} 
                 id="lotos-logo-svg"
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="1.5" 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                className="w-5 h-5 flex-shrink-0"
-              >
-                {/* Stylized Lotus Seed Pod / Fruit outline */}
-                <path d="M4 10C4 6 7.5 4 12 4S20 6 20 10C20 13.5 17 18 12 20.5 7 18 4 13.5 4 10Z" />
-                <path d="M4 10C4 11.5 7.5 12.5 12 12.5S20 11.5 20 10" />
-                {/* Seed holes/details on the flat top face */}
-                <circle cx="8" cy="7" r="1" fill="currentColor" stroke="none" />
-                <circle cx="12" cy="6.5" r="1.1" fill="currentColor" stroke="none" />
-                <circle cx="16" cy="7" r="1" fill="currentColor" stroke="none" />
-                <circle cx="10" cy="9.5" r="1" fill="currentColor" stroke="none" />
-                <circle cx="14" cy="9.5" r="1" fill="currentColor" stroke="none" />
-              </svg>
+                className="w-8 h-8 flex-shrink-0 object-contain"
+                alt="Lotos Logo" 
+              />
             </button>
 
             {/* Desktop Navigation elements */}
@@ -640,6 +744,19 @@ export default function App() {
               </button>
 
 
+
+              {geminiApiKey && (
+                <button
+                  onClick={() => { setActiveTab('advisor'); setFocusedBrokerId(null); }}
+                  className={`px-3 py-2 rounded-lg transition-all border ${
+                    activeTab === 'advisor' 
+                      ? 'bg-[#111] text-[#d4af37] border-[#d4af37]/20 border-l-2 border-l-[#d4af37]' 
+                      : 'text-[#666] hover:text-white hover:bg-[#111]/50 border-transparent'
+                  }`}
+                >
+                  {TRANSLATIONS[language].tabAdvisor}
+                </button>
+              )}
 
               <button
                 onClick={() => { setActiveTab('settings'); setFocusedBrokerId(null); }}
@@ -855,6 +972,15 @@ export default function App() {
                 {TRANSLATIONS[language].tabSuppression}
               </button>
 
+              {geminiApiKey && (
+                <button
+                  onClick={() => { setActiveTab('advisor'); setMobileMenuOpen(false); setFocusedBrokerId(null); }}
+                  className="w-full text-left block px-3 py-2.5 rounded-lg text-[#666] hover:bg-[#111]/80 hover:text-white"
+                >
+                  {TRANSLATIONS[language].tabAdvisor}
+                </button>
+              )}
+
               <button
                 onClick={() => { setActiveTab('settings'); setMobileMenuOpen(false); setFocusedBrokerId(null); }}
                 className="w-full text-left block px-3 py-2.5 rounded-lg text-[#666] hover:bg-[#111]/80 hover:text-white"
@@ -879,6 +1005,14 @@ export default function App() {
             onNavigate={(tab) => { setActiveTab(tab); setFocusedBrokerId(null); }}
             language={language}
             googleUser={googleUser}
+            resubmitIntervalMonths={resubmitIntervalMonths}
+            onUpdateStatus={handleUpdateStatus}
+            geminiApiKey={geminiApiKey}
+            googleClientId={googleClientId}
+            googleClientSecret={googleClientSecret}
+            wizardDismissed={wizardDismissed}
+            onDismissWizard={handleDismissWizard}
+            onOpenWizard={handleOpenCredentialsWizard}
           />
         )}
 
@@ -924,6 +1058,8 @@ export default function App() {
             onStartGoogleAuth={handleStartGoogleAuth}
             isAuthorizing={isAuthorizing}
             authError={authError}
+            wizardDismissed={wizardDismissed}
+            onRestoreWizard={handleRestoreWizard}
           />
         )}
 
@@ -951,6 +1087,11 @@ export default function App() {
             disableInternalSweep={disableInternalSweep}
             lastSweepTime={lastSweepTime}
             onUpdateSweepSettings={handleUpdateSweepSettings}
+            resubmitIntervalMonths={resubmitIntervalMonths}
+            geminiApiKey={geminiApiKey}
+            googleClientId={googleClientId}
+            googleClientSecret={googleClientSecret}
+            onOpenWizard={handleOpenCredentialsWizard}
           />
         )}
 
@@ -961,6 +1102,358 @@ export default function App() {
         <p>{TRANSLATIONS[language].footerText1}</p>
         <p className="mt-1 text-[10px] text-[#444] uppercase tracking-wider">{toGreekUppercase(TRANSLATIONS[language].footerText2)}</p>
       </footer>
+
+      {/* Step-by-Step Credentials Onboarding Wizard Modal */}
+      {isWizardModalOpen && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" id="credentials-wizard-modal">
+          <div className="bg-[#0a0a0a] border border-[#d4af37]/30 rounded-2xl max-w-xl w-full p-6 space-y-6 shadow-2xl relative font-sans">
+            
+            {/* Header / Dismiss */}
+            <div className="flex items-center justify-between border-b border-[#1a1a1a] pb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-[#d4af37]/10 text-[#d4af37] rounded-lg">
+                  <Sparkles size={16} />
+                </span>
+                <h3 className="text-sm font-serif text-white uppercase tracking-wider">
+                  {toGreekUppercase(language === 'el' ? 'Οδηγός Εγκατάστασης API' : 'API Setup Wizard')}
+                </h3>
+              </div>
+              <button 
+                onClick={() => setIsWizardModalOpen(false)}
+                className="text-gray-500 hover:text-white transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Step Indicators */}
+            <div className="flex items-center justify-between pb-2 border-b border-[#1a1a1a]/60">
+              {[
+                { label_el: 'Εισαγωγή', label_en: 'Intro' },
+                { label_el: 'Gemini AI', label_en: 'Gemini AI' },
+                { label_el: 'Google API', label_en: 'Google API' },
+                { label_el: 'Ολοκλήρωση', label_en: 'Finish' }
+              ].map((stepObj, idx) => {
+                const stepNum = idx + 1;
+                const isCompleted = wizardModalStep > stepNum;
+                const isActive = wizardModalStep === stepNum;
+                return (
+                  <div key={idx} className="flex items-center gap-1.5">
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono font-bold ${
+                      isCompleted 
+                        ? 'bg-emerald-950/20 text-emerald-400 border border-emerald-900/30' 
+                        : isActive 
+                          ? 'bg-[#d4af37]/20 text-[#d4af37] border border-[#d4af37]' 
+                          : 'bg-[#111] text-[#666] border border-[#1a1a1a]'
+                    }`}>
+                      {stepNum}
+                    </span>
+                    <span className={`text-[10px] font-bold tracking-wider uppercase hidden sm:inline ${
+                      isActive ? 'text-[#d4af37]' : 'text-[#666]'
+                    }`}>
+                      {toGreekUppercase(language === 'el' ? stepObj.label_el : stepObj.label_en)}
+                    </span>
+                    {idx < 3 && <span className="text-[#333] hidden sm:inline">&rarr;</span>}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Step Content */}
+            <div className="py-2 text-xs space-y-4">
+              
+              {/* STEP 1: Welcome & Overview */}
+              {wizardModalStep === 1 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-bold text-white uppercase tracking-wider font-serif">
+                    {toGreekUppercase(language === 'el' ? 'Καλώς ορίσατε στον Οδηγό Εγκατάστασης' : 'Welcome to the Setup Wizard')}
+                  </h4>
+                  <p className="text-[#888] leading-relaxed font-sans">
+                    {language === 'el'
+                      ? 'Αυτός ο οδηγός θα σας βοηθήσει να συνδέσετε τις απαραίτητες υπηρεσίες για να ξεκλειδώσετε τις πλήρεις δυνατότητες του Λωτού.'
+                      : 'This interactive wizard will guide you through connecting the necessary external services to activate all capabilities.'}
+                  </p>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 font-sans">
+                    <div className="bg-[#111] border border-[#1a1a1a] p-3 rounded-lg space-y-1">
+                      <div className="flex items-center gap-1.5 text-[#d4af37] font-bold">
+                        <Cpu size={14} />
+                        <span>Gemini AI (Optional)</span>
+                      </div>
+                      <p className="text-[10px] text-[#666] leading-relaxed">
+                        {language === 'el'
+                          ? 'Ενεργοποιεί τον Compliance Advisor AI chat και επιτρέπει τη σύνταξη έξυπνων απαντήσεων.'
+                          : 'Powers the Compliance Advisor AI chat and auto-drafts custom deletion emails.'}
+                      </p>
+                    </div>
+
+                    <div className="bg-[#111] border border-[#1a1a1a] p-3 rounded-lg space-y-1">
+                      <div className="flex items-center gap-1.5 text-blue-400 font-bold">
+                        <Mail size={14} />
+                        <span>Google Gmail (Optional)</span>
+                      </div>
+                      <p className="text-[10px] text-[#666] leading-relaxed">
+                        {language === 'el'
+                          ? 'Επιτρέπει την αυτόματη αποστολή email διαγραφής και το σκανάρισμα απαντήσεων.'
+                          : 'Enables fully automated sweeps to dispatch deletions and monitor inbox replies.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2: Gemini AI Key Setup */}
+              {wizardModalStep === 2 && (
+                <div className="space-y-3.5 font-sans">
+                  <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-1.5 font-serif">
+                    <Cpu size={16} className="text-[#d4af37]" />
+                    {toGreekUppercase(language === 'el' ? 'Βήμα 2: Gemini AI API Key' : 'Step 2: Gemini AI API Key')}
+                  </h4>
+                  <p className="text-[#888] leading-relaxed">
+                    {language === 'el'
+                      ? 'Για να ενεργοποιήσετε τον AI Σύμβουλο Συμμόρφωσης, χρειάζεστε ένα Gemini API Key. Μπορείτε να εκδώσετε ένα εντελώς δωρεάν ($0) από το Google AI Studio.'
+                      : 'To communicate with the AI Compliance Advisor, configure your Gemini token. You can fetch one at zero cost from the Google AI Studio.'}
+                  </p>
+                  
+                  <div className="bg-black/30 border border-[#1a1a1a] p-3 rounded-lg text-[10px] text-gray-400 leading-relaxed space-y-1">
+                    <p>1. {language === 'el' ? 'Επισκεφθείτε το: https://aistudio.google.com' : 'Visit: https://aistudio.google.com'}</p>
+                    <p>2. {language === 'el' ? 'Συνδεθείτε με τον Google λογαριασμό σας και πατήστε "Get API Key".' : 'Authenticate and select "Get API Key".'}</p>
+                  </div>
+
+                  <div className="space-y-1 pt-2">
+                    <label className="text-[10px] font-bold text-[#666] uppercase tracking-wider block">
+                      {toGreekUppercase(language === 'el' ? 'Κλειδί API Gemini' : 'Gemini API Key')}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showGeminiToggle ? 'text' : 'password'}
+                        value={localGeminiKey}
+                        onChange={(e) => setLocalGeminiKey(e.target.value)}
+                        placeholder="AIzaSy..."
+                        className="w-full bg-[#050505] border border-[#1a1a1a] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-[#d4af37]/40 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowGeminiToggle(!showGeminiToggle)}
+                        className="absolute right-3 top-2.5 text-[#555] hover:text-white cursor-pointer"
+                      >
+                        {showGeminiToggle ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3: Google Client Credentials Setup */}
+              {wizardModalStep === 3 && (
+                <div className="space-y-3.5 font-sans">
+                  <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-1.5 font-serif">
+                    <Key size={16} className="text-blue-400" />
+                    {toGreekUppercase(language === 'el' ? 'Βήμα 3: Google API Gateway' : 'Step 3: Google API Credentials')}
+                  </h4>
+                  <p className="text-[#888] leading-relaxed">
+                    {language === 'el'
+                      ? 'Για να αυτοματοποιήσετε την αποστολή email διαγραφής μέσω Gmail, πρέπει να δημιουργήσετε μια εφαρμογή στο Google Cloud Console και να πάρετε Client ID και Secret.'
+                      : 'To dispatch automated sweeps directly from your Gmail, set up your Google Cloud Developer Console credentials.'}
+                  </p>
+
+                  <div className="bg-black/30 border border-[#1a1a1a] p-3 rounded-lg text-[10px] text-gray-400 leading-relaxed space-y-1">
+                    <p>• {language === 'el' ? 'Authorized Redirect URI: http://localhost:3000/api/auth/google/callback' : 'Authorized Redirect URI: http://localhost:3000/api/auth/google/callback'}</p>
+                    <p>• {language === 'el' ? 'Ενεργοποιήστε το Gmail API στη βιβλιοθήκη APIs.' : 'Enable Gmail API in Google Cloud APIs Library.'}</p>
+                  </div>
+
+                  <div className="space-y-3.5 pt-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-[#666] uppercase tracking-wider block">
+                        GOOGLE CLIENT ID
+                      </label>
+                      <input
+                        type="text"
+                        value={localGoogleClientId}
+                        onChange={(e) => setLocalGoogleClientId(e.target.value)}
+                        placeholder="123456-abcdef.apps.googleusercontent.com"
+                        className="w-full bg-[#050505] border border-[#1a1a1a] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-[#d4af37]/40 font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-[#666] uppercase tracking-wider block">
+                        GOOGLE CLIENT SECRET
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showGoogleToggle ? 'text' : 'password'}
+                          value={localGoogleClientSecret}
+                          onChange={(e) => setLocalGoogleClientSecret(e.target.value)}
+                          placeholder="GOCSPX-..."
+                          className="w-full bg-[#050505] border border-[#1a1a1a] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-[#d4af37]/40 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowGoogleToggle(!showGoogleToggle)}
+                          className="absolute right-3 top-2.5 text-[#555] hover:text-white cursor-pointer"
+                        >
+                          {showGoogleToggle ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 4: Save Success & Finish */}
+              {wizardModalStep === 4 && (
+                <div className="space-y-4 text-center py-4 font-sans">
+                  <div className="w-12 h-12 rounded-full bg-emerald-950/20 text-emerald-400 border border-emerald-900/30 flex items-center justify-center mx-auto text-xl">
+                    <CheckCircle2 size={24} />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <h4 className="text-base font-bold text-white font-serif">
+                      {language === 'el' ? 'Η Εγκατάσταση Ολοκληρώθηκε!' : 'Configuration Completed!'}
+                    </h4>
+                    <p className="text-[#888] leading-relaxed max-w-sm mx-auto">
+                      {language === 'el'
+                        ? 'Τα κλειδιά σας συγχρονίστηκαν επιτυχώς με τον τοπικό διακομιστή του Λωτού.'
+                        : 'Your secure credentials have been successfully synced to the local Lotos database.'}
+                    </p>
+                  </div>
+
+                  <div className="max-w-xs mx-auto pt-2 space-y-2 font-mono text-[10px] text-left">
+                    <div className="flex items-center justify-between border-b border-[#1a1a1a] pb-1.5">
+                      <span className="text-[#666]">Gemini AI Gateway:</span>
+                      <span className={localGeminiKey ? 'text-emerald-400 font-bold' : 'text-[#666]'}>
+                        {localGeminiKey ? 'ACTIVE' : 'MISSING'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[#666]">Google API Gateway:</span>
+                      <span className={(localGoogleClientId && localGoogleClientSecret) ? 'text-emerald-400 font-bold' : 'text-[#666]'}>
+                        {(localGoogleClientId && localGoogleClientSecret) ? 'ACTIVE' : 'MISSING'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Google Account Connection status / button */}
+                  <div className="max-w-xs mx-auto border-t border-[#1a1a1a] pt-3.5 mt-2 space-y-3">
+                    <h5 className="text-[10px] font-bold text-white uppercase tracking-wider text-left">
+                      {language === 'el' ? 'Σύνδεση Λογαριασμού Google' : 'Google Account Connection'}
+                    </h5>
+                    
+                    {googleUser && googleToken ? (
+                      <div className="bg-emerald-950/10 border border-emerald-900/30 rounded-lg p-2.5 flex items-center gap-2 text-[10px] text-emerald-400 font-mono">
+                        <CheckCircle2 size={14} className="shrink-0" />
+                        <div className="text-left truncate">
+                          <span className="block font-bold text-white">CONNECTED</span>
+                          <span className="text-gray-400 select-all">{googleUser.email}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 text-left">
+                        <p className="text-[10px] text-gray-500 leading-normal font-sans">
+                          {language === 'el'
+                            ? 'Απαιτείται σύνδεση με λογαριασμό Google για την αυτοματοποίηση των email και τη σάρωση απαντήσεων.'
+                            : 'Connecting your Google account is required to scan replies and automate deletion emails.'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleStartGoogleAuth}
+                          disabled={isAuthorizing}
+                          className="w-full bg-[#35B9F5] hover:bg-[#20a3dd] text-white text-xs font-bold py-2 px-3 rounded-lg shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer font-sans"
+                        >
+                          {isAuthorizing ? (
+                            <>
+                              <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                              {language === 'el' ? 'Σύνδεση...' : 'Connecting...'}
+                            </>
+                          ) : (
+                            <>
+                              {language === 'el' ? 'Σύνδεση με Google Account' : 'Connect Google Account'}
+                            </>
+                          )}
+                        </button>
+                        {authError && (
+                          <p className="text-[10px] text-red-400 leading-normal font-semibold font-sans">
+                            ⚠️ {authError}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-between pt-4 border-t border-[#1a1a1a]">
+              
+              {/* Left / Back Button */}
+              {wizardModalStep > 1 && wizardModalStep < 4 ? (
+                <button
+                  type="button"
+                  onClick={() => setWizardModalStep(wizardModalStep - 1)}
+                  className="flex items-center gap-1 text-xs font-semibold text-[#888] hover:text-white bg-[#111] border border-[#1a1a1a] py-2 px-4 rounded-lg transition-all cursor-pointer font-sans"
+                >
+                  <ChevronLeft size={13} /> {toGreekUppercase(language === 'el' ? 'Πίσω' : 'Back')}
+                </button>
+              ) : (
+                <div></div> // spacing filler
+              )}
+
+              {/* Right Button */}
+              {wizardModalStep === 1 ? (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsWizardModalOpen(false)}
+                    className="text-xs font-semibold text-[#888] hover:text-white bg-[#111] border border-[#1a1a1a] py-2 px-4 rounded-lg transition-all cursor-pointer font-sans"
+                  >
+                    {toGreekUppercase(language === 'el' ? 'Κλείσιμο' : 'Cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWizardModalStep(2)}
+                    className="flex items-center gap-1.5 bg-[#d4af37] text-black text-xs font-bold py-2 px-4 rounded-lg transition-all cursor-pointer font-sans"
+                  >
+                    {toGreekUppercase(language === 'el' ? 'Επόμενο' : 'Next')} <ChevronRight size={13} />
+                  </button>
+                </div>
+              ) : wizardModalStep === 2 ? (
+                <button
+                  type="button"
+                  onClick={() => setWizardModalStep(3)}
+                  className="flex items-center gap-1.5 bg-[#d4af37] text-black text-xs font-bold py-2 px-4 rounded-lg transition-all cursor-pointer font-sans"
+                >
+                  {toGreekUppercase(language === 'el' ? 'Επόμενο' : 'Next')} <ChevronRight size={13} />
+                </button>
+              ) : wizardModalStep === 3 ? (
+                <button
+                  type="button"
+                  disabled={isWizardSaving}
+                  onClick={handleSaveWizardCredentials}
+                  className="flex items-center gap-1.5 bg-[#d4af37] disabled:bg-[#d4af37]/50 text-black text-xs font-bold py-2 px-4 rounded-lg transition-all cursor-pointer font-sans"
+                >
+                  {isWizardSaving 
+                    ? toGreekUppercase(language === 'el' ? 'Αποθήκευση...' : 'Saving...') 
+                    : toGreekUppercase(language === 'el' ? 'Αποθήκευση & Τέλος' : 'Save & Finish')
+                  }
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsWizardModalOpen(false)}
+                  className="w-full bg-[#d4af37] text-black text-xs font-bold py-2 px-4 rounded-lg transition-all text-center cursor-pointer font-sans uppercase tracking-wider text-[10px]"
+                >
+                  {toGreekUppercase(language === 'el' ? 'Τέλος' : 'Finish')}
+                </button>
+              )}
+
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

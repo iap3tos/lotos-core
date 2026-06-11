@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { Broker, ProfileDetails, TrackingData, HistoryItem, RemovalStatus } from '../types';
 import { TRANSLATIONS, Language } from '../data/translations';
-import { ShieldCheck, Mail, AlertCircle, CheckCircle2, Bookmark, Flame, Zap, ArrowRight, UserPlus, FileWarning, Sparkles, FileText } from 'lucide-react';
+import { ShieldCheck, Mail, AlertCircle, CheckCircle2, Bookmark, Flame, Zap, ArrowRight, UserPlus, FileWarning, Sparkles, FileText, Lock, Key, Cpu, Eye, EyeOff, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { toGreekUppercase } from '../utils/greekUtils';
 
 interface DashboardProps {
@@ -11,6 +12,19 @@ interface DashboardProps {
   onNavigate: (tab: string) => void;
   language: Language;
   googleUser: { name: string; email: string; picture?: string } | null;
+  resubmitIntervalMonths: number;
+  onUpdateStatus: (
+    brokerId: string, 
+    newStatus: RemovalStatus, 
+    notesText: string,
+    actionType: 'sent_email' | 'form_visited' | 'status_changed'
+  ) => void;
+  geminiApiKey: string;
+  googleClientId: string;
+  googleClientSecret: string;
+  wizardDismissed: boolean;
+  onDismissWizard: () => void;
+  onOpenWizard: () => void;
 }
 
 const getLocalizedStatus = (status: RemovalStatus | string | undefined, lang: Language) => {
@@ -40,7 +54,15 @@ export default function Dashboard({
   history,
   onNavigate,
   language,
-  googleUser
+  googleUser,
+  resubmitIntervalMonths,
+  onUpdateStatus,
+  geminiApiKey,
+  googleClientId,
+  googleClientSecret,
+  wizardDismissed,
+  onDismissWizard,
+  onOpenWizard
 }: DashboardProps) {
   const activeMember = profile;
   
@@ -103,6 +125,15 @@ export default function Dashboard({
   const highSensitivityBrokers = brokers.filter(b => b.sensitivity === 'High');
   const highCompleted = highSensitivityBrokers.filter(b => memberState[b.id]?.status === 'completed').length;
 
+  // Calculate due resubmissions
+  const resubmitIntervalMs = resubmitIntervalMonths * 30 * 24 * 60 * 60 * 1000;
+  const dueResubmissions = brokers.filter(broker => {
+    const state = memberState[broker.id];
+    if (state?.status !== 'completed' || !state?.completedAt) return false;
+    const completedTime = new Date(state.completedAt).getTime();
+    return (Date.now() - completedTime) >= resubmitIntervalMs;
+  });
+
   return (
     <div className="space-y-8 animate-fade-in" id="dashboard-tab">
       
@@ -119,16 +150,6 @@ export default function Dashboard({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Compliance Advisor AI Button */}
-          <button
-            onClick={() => onNavigate('advisor')}
-            className="flex items-center gap-1.5 bg-[#0a0a0a] hover:bg-[#111] border border-[#d4af37]/30 hover:border-[#d4af37]/60 text-xs font-semibold px-4 py-2.5 rounded-xl text-[#d4af37] hover:text-white transition-all cursor-pointer shadow-[0_0_10px_rgba(212,175,55,0.05)] hover:shadow-[0_0_15px_rgba(212,175,55,0.1)]"
-          >
-            <Sparkles size={13} className="text-[#d4af37] shrink-0" />
-            <span>
-              {language === 'el' ? 'Σύμβουλος Συμμόρφωσης' : 'Compliance Advisor'}
-            </span>
-          </button>
 
           {/* Google Connection Badge */}
           <div className="flex items-center gap-2.5 bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl px-4 py-2.5 text-xs font-semibold">
@@ -142,18 +163,161 @@ export default function Dashboard({
               </>
             ) : (
               <>
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 animate-pulse"></div>
-                <button
-                  onClick={() => onNavigate('profiles')}
-                  className="text-[#d4af37] hover:text-white transition-colors cursor-pointer text-xs"
-                >
-                  {language === 'el' ? '⚠️ Σύνδεση με Google Account' : '⚠️ Connect Google Account'}
-                </button>
+                <div className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0"></div>
+                <span className="text-[#666] font-sans">
+                  {language === 'el' ? 'Μη συνδεδεμένος λογαριασμός' : 'Not connected'}
+                </span>
               </>
             )}
           </div>
         </div>
       </div>
+
+      {/* Setup Wizard Banner */}
+      {!wizardDismissed && (!googleClientId || !geminiApiKey) && (
+        <div className="bg-[#0c0c0e] border border-[#d4af37]/20 rounded-xl p-5 shadow-[0_0_15px_rgba(212,175,55,0.02)] space-y-4 animate-fade-in font-sans">
+          <div className="flex items-center gap-2 border-b border-[#1a1a1a] pb-3">
+            <span className="p-1.5 bg-[#d4af37]/10 text-[#d4af37] rounded-lg">
+              <Sparkles size={16} />
+            </span>
+            <h3 className="text-sm font-serif text-white uppercase tracking-wider">
+              {language === 'el' ? 'ΟΔΗΓΟΣ ΕΓΚΑΤΑΣΤΑΣΗΣ API & CREDENTIALS' : 'LOTOS CONFIGURATION WIZARD'}
+            </h3>
+            <div className="ml-auto flex items-center gap-2">
+              <button 
+                onClick={onOpenWizard}
+                className="text-[10px] text-[#d4af37] hover:text-white transition-colors font-bold uppercase tracking-wider border border-[#d4af37]/30 px-2.5 py-1 rounded-md bg-[#111] cursor-pointer"
+              >
+                {toGreekUppercase(language === 'el' ? 'Ρύθμιση Τώρα' : 'Configure Now')}
+              </button>
+              <button 
+                onClick={onDismissWizard}
+                className="text-[10px] text-[#666] hover:text-[#d4af37] transition-colors font-bold uppercase tracking-wider border border-[#1a1a1a] px-2.5 py-1 rounded-md bg-black/40 cursor-pointer"
+              >
+                {toGreekUppercase(language === 'el' ? 'Παράβλεψη' : 'Dismiss')}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-[#888] leading-relaxed">
+            {language === 'el'
+              ? 'Για να ξεκλειδώσετε τις πλήρεις δυνατότητες του Λωτού (αυτόματες επανυποβολές Gmail και compliance advisor), παρακαλούμε συνδέστε τα κλειδιά API σας. Μπορείτε να τα εισαγάγετε απευθείας στην καρτέλα Ρυθμίσεις.'
+              : 'To unlock the full potential of Lotos (automated Gmail resubmissions and compliance advisor AI), please configure your API gateway keys directly in the Settings tab.'}
+          </p>
+          <div className="flex flex-wrap gap-4 text-[10px] text-[#666] font-mono">
+            <div className="flex items-center gap-1.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${geminiApiKey ? 'bg-emerald-400' : 'bg-red-400'}`}></span>
+              <span>Gemini AI: {geminiApiKey ? 'Active' : 'Missing'}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${googleClientId && googleClientSecret ? 'bg-emerald-400' : 'bg-red-400'}`}></span>
+              <span>Google API Gateway: {googleClientId && googleClientSecret ? 'Active' : 'Missing'}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Due Resubmissions Notifications banner */}
+      {dueResubmissions.length > 0 && (
+        <div className="bg-[#0a0a0a] border border-[#d4af37]/30 rounded-xl p-5 shadow-[0_0_15px_rgba(212,175,55,0.03)] space-y-4 animate-fade-in font-sans">
+          <div className="flex items-center gap-2 border-b border-[#1a1a1a] pb-3">
+            <span className="p-1.5 bg-[#d4af37]/10 text-[#d4af37] rounded-lg">
+              <AlertCircle size={16} />
+            </span>
+            <h3 className="text-sm font-serif text-white uppercase tracking-wider">
+              {language === 'el' ? 'ΑΠΑΙΤΟΥΝΤΑΙ ΕΠΑΝΥΠΟΒΟΛΕΣ ΔΙΑΓΡΑΦΩΝ' : 'REMOVAL RESUBMISSIONS DUE'}
+            </h3>
+            <span className="ml-auto bg-[#d4af37] text-black text-[10px] font-bold px-2 py-0.5 rounded-full font-mono">
+              {dueResubmissions.length}
+            </span>
+          </div>
+
+          <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+            {dueResubmissions.map(broker => {
+              const state = memberState[broker.id];
+              const completedDate = state?.completedAt ? new Date(state.completedAt).toLocaleDateString() : '';
+              const supportsEmail = broker.optOutMethod === 'Email' || broker.optOutMethod === 'Both';
+              const isAutoAvailable = supportsEmail && !!googleUser;
+
+              return (
+                <div key={broker.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-black/40 border border-[#1a1a1a] rounded-lg">
+                  <div>
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      {broker.name} 
+                      <span className="text-[10px] font-normal text-[#666]">({broker.domain})</span>
+                    </h4>
+                    <p className="text-[10px] text-[#888] mt-0.5 leading-relaxed font-sans">
+                      {language === 'el'
+                        ? `Ολοκληρώθηκε στις ${completedDate} (${resubmitIntervalMonths} μήνες πριν).`
+                        : `Verified on ${completedDate} (${resubmitIntervalMonths} months elapsed).`}
+                      {' '}
+                      <span className="text-[#d4af37] font-semibold">
+                        {isAutoAvailable
+                          ? (language === 'el' ? 'Προγραμματισμένη αυτόματη επανυποβολή.' : 'Automated sweep email scheduled.')
+                          : (language === 'el' ? 'Απαιτείται μη αυτόματη ενέργεια.' : 'Manual action required.')}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {isAutoAvailable ? (
+                      <button
+                        onClick={async (e) => {
+                          const btn = e.currentTarget;
+                          btn.disabled = true;
+                          const originalText = btn.innerText;
+                          btn.innerText = language === 'el' ? 'Αποστολή...' : 'Sending...';
+                          try {
+                            const sweepRes = await fetch('/api/cron/sweep');
+                            const sweepData = await sweepRes.json();
+                            if (sweepRes.ok && sweepData.success) {
+                              onUpdateStatus(
+                                broker.id, 
+                                'pending', 
+                                language === 'el' 
+                                  ? `[Επανυποβολή] Ξεκίνησε αυτόματη επανυποβολή.` 
+                                  : `[Resubmit] Re-sent automated opt-out email.`,
+                                'sent_email'
+                              );
+                            } else {
+                              throw new Error(sweepData.error || 'Sweep failed');
+                            }
+                          } catch (err) {
+                            alert(language === 'el' ? 'Αποτυχία επανυποβολής' : 'Resubmit failed');
+                            btn.disabled = false;
+                            btn.innerText = originalText;
+                          }
+                        }}
+                        className="bg-[#d4af37] hover:bg-[#c4a030] text-black text-[10px] font-bold px-3 py-1.5 rounded-md transition-all shadow-xs cursor-pointer"
+                      >
+                        {language === 'el' ? 'Αποστολή Τώρα' : 'Send Resubmit Now'}
+                      </button>
+                    ) : (
+                      <a
+                        href={broker.optOutUrl || `https://${broker.domain}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => {
+                          onUpdateStatus(
+                            broker.id, 
+                            'action_required', 
+                            language === 'el' 
+                              ? `[Επανυποβολή] Εκκρεμεί μη αυτόματη υποβολή φόρμας.` 
+                              : `[Resubmit] Form visit initiated for manual resubmission.`,
+                            'form_visited'
+                          );
+                        }}
+                        className="bg-[#111] hover:bg-[#1a1a1a] border border-[#1a1a1a] hover:border-[#d4af37]/30 text-[#d4af37] hover:text-white text-[10px] font-bold px-3 py-1.5 rounded-md transition-all cursor-pointer flex items-center justify-center"
+                      >
+                        {language === 'el' ? 'Άνοιγμα Φόρμας' : 'Launch Form'}
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Stats Bento Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

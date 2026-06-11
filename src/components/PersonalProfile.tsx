@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ProfileDetails } from '../types';
 import { TRANSLATIONS, Language } from '../data/translations';
-import { Save, ShieldCheck, Mail, AlertTriangle, Info, LogOut } from 'lucide-react';
+import { Save, ShieldCheck, Mail, AlertTriangle, Info, LogOut, Sparkles } from 'lucide-react';
 import { toGreekUppercase } from '../utils/greekUtils';
 
 interface PersonalProfileProps {
@@ -16,6 +16,10 @@ interface PersonalProfileProps {
   onStartGoogleAuth: () => void;
   isAuthorizing: boolean;
   authError: string | null;
+
+  // Wizard props
+  wizardDismissed: boolean;
+  onRestoreWizard: () => void;
 }
 
 export default function PersonalProfile({
@@ -27,7 +31,9 @@ export default function PersonalProfile({
   onGoogleSignOut,
   onStartGoogleAuth,
   isAuthorizing,
-  authError
+  authError,
+  wizardDismissed,
+  onRestoreWizard
 }: PersonalProfileProps) {
   const activeProfile = profile || {
     id: 'default',
@@ -214,6 +220,27 @@ export default function PersonalProfile({
                 ? 'Κανένα στοιχείο πρόσβασης ή email δεν αποστέλλεται σε εμπορικούς cloud servers. Όλα τα tokens αποθηκεύονται αποκλειστικά στη μνήμη RAM του προγράμματος περιήγησής σας.'
                 : 'No authentication credentials or variables are ever written to external servers. All access tokens stay strictly local in ephemeral memory.'}
             </div>
+
+            {wizardDismissed && (
+              <div className="pt-3 border-t border-[#1a1a1a]/40 space-y-2">
+                <span className="font-bold block text-white text-[10px] uppercase">
+                  {language === 'el' ? '✨ ΟΔΗΓΟΣ ΕΓΚΑΤΑΣΤΑΣΗΣ' : '✨ SETUP WIZARD'}
+                </span>
+                <p className="text-[10px] text-[#888] leading-relaxed font-sans">
+                  {language === 'el'
+                    ? 'Ο οδηγός εγκατάστασης της αρχικής σελίδας έχει αποκρυφθεί. Μπορείτε να τον επαναφέρετε αν θέλετε να κάνετε σύνδεση.'
+                    : 'The dashboard setup wizard banner has been hidden. You can restore it if you wish to integrate now.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={onRestoreWizard}
+                  className="w-full bg-[#111] hover:bg-[#1a1a1a] border border-[#d4af37]/30 hover:border-[#d4af37]/60 text-[#d4af37] font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer text-[10px] uppercase tracking-wider"
+                >
+                  <Sparkles size={11} />
+                  {toGreekUppercase(language === 'el' ? 'Επαναφορά Οδηγού & Μετάβαση' : 'Restore Wizard & Configure')}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Optional Manual Workflow Information Card */}

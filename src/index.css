@@ -10,9 +10,181 @@
 
 body {
   font-family: var(--font-sans);
-  background-color: #050505;
+  background-color: #0F1623;
   color: #e5e5e5;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Overall premium dark theme overrides based on #0F1623 slate blue variants */
+.bg-\[\#050505\] {
+  background-color: #0F1623 !important;
+}
+
+.bg-\[\#0a0a0a\] {
+  background-color: #172237 !important;
+}
+.bg-\[\#0a0a0a\]\/80 {
+  background-color: rgba(23, 34, 55, 0.8) !important;
+}
+.bg-\[\#0a0a0a\]\/50 {
+  background-color: rgba(23, 34, 55, 0.5) !important;
+}
+
+.bg-\[\#0c0c0e\] {
+  background-color: #121B2C !important;
+}
+
+.bg-\[\#111\],
+.bg-\[\#111111\] {
+  background-color: #1D2A44 !important;
+}
+.bg-\[\#111\]\/80 {
+  background-color: rgba(29, 42, 68, 0.8) !important;
+}
+.bg-\[\#111\]\/50 {
+  background-color: rgba(29, 42, 68, 0.5) !important;
+}
+
+/* Border color overrides to match slate blue theme */
+.border-\[\#1a1a1a\] {
+  border-color: #22314d !important;
+}
+.border-\[\#1a1a1a\]\/60 {
+  border-color: rgba(34, 49, 77, 0.6) !important;
+}
+.border-\[\#1a1a1a\]\/55 {
+  border-color: rgba(34, 49, 77, 0.55) !important;
+}
+
+.border-\[\#111\] {
+  border-color: #1D2A44 !important;
+}
+
+.border-\[\#d4af37\]\/20 {
+  border-color: rgba(53, 185, 245, 0.2) !important;
+}
+
+/* Progress bar track custom theming for better contrast */
+.bg-black.rounded-full.h-1\.5.overflow-hidden.border,
+.bg-black.rounded-full.h-2.overflow-hidden.border {
+  background-color: #0c121d !important;
+  border-color: #22314d !important;
+}
+
+/* Hover state overrides */
+.hover\:bg-\[\#1a1a1a\]:hover {
+  background-color: #22314d !important;
+}
+
+.hover\:bg-\[\#111\]:hover {
+  background-color: #1D2A44 !important;
+}
+
+.hover\:bg-\[\#111\]\/80:hover {
+  background-color: rgba(29, 42, 68, 0.8) !important;
+}
+
+.hover\:bg-\[\#111\]\/50:hover {
+  background-color: rgba(29, 42, 68, 0.5) !important;
+}
+
+.hover\:bg-\[\#1a1a1a\]\/80:hover {
+  background-color: rgba(34, 49, 77, 0.8) !important;
+}
+
+.hover\:bg-\[\#1a1a1a\]\/50:hover {
+  background-color: rgba(34, 49, 77, 0.5) !important;
+}
+
+.hover\:bg-neutral-900:hover {
+  background-color: #1D2A44 !important;
+}
+
+/* Dropdown select options styling */
+select option {
+  background-color: #172237 !important;
+  color: #e5e5e5 !important;
+}
+
+/* Prevent autofill style clashing */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px #0F1623 inset !important;
+  -webkit-text-fill-color: #e5e5e5 !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Subtle premium scrollbars */
+::-webkit-scrollbar-track {
+  background: #0F1623;
+}
+::-webkit-scrollbar-thumb {
+  background: #22314d;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #1D2A44;
+}
+
+/* Primary color overrides from gold (#d4af37) to sky blue (#35B9F5) */
+.text-\[\#d4af37\] {
+  color: #35B9F5 !important;
+}
+
+.bg-\[\#d4af37\] {
+  background-color: #35B9F5 !important;
+}
+.bg-\[\#d4af37\]\/10 {
+  background-color: rgba(53, 185, 245, 0.1) !important;
+}
+.bg-\[\#d4af37\]\/20 {
+  background-color: rgba(53, 185, 245, 0.2) !important;
+}
+.bg-\[\#d4af37\]\/25 {
+  background-color: rgba(53, 185, 245, 0.25) !important;
+}
+.bg-\[\#d4af37\]\/30 {
+  background-color: rgba(53, 185, 245, 0.3) !important;
+}
+.bg-\[\#d4af37\]\/50 {
+  background-color: rgba(53, 185, 245, 0.5) !important;
+}
+
+.border-\[\#d4af37\] {
+  border-color: #35B9F5 !important;
+}
+.border-\[\#d4af37\]\/30 {
+  border-color: rgba(53, 185, 245, 0.3) !important;
+}
+.border-\[\#d4af37\]\/60 {
+  border-color: rgba(53, 185, 245, 0.6) !important;
+}
+.border-\[\#d4af37\]\/20 {
+  border-color: rgba(53, 185, 245, 0.2) !important;
+}
+
+/* Hover primary color overrides */
+.hover\:bg-\[\#c4a030\]:hover,
+.hover\:bg-\[\#d4af37\]:hover {
+  background-color: #219bd3 !important;
+}
+
+.hover\:text-\[\#e5c158\]:hover {
+  color: #63cdff !important;
+}
+
+.hover\:border-\[\#d4af37\]:hover,
+.hover\:border-\[\#d4af37\]\/60:hover,
+.hover\:border-\[\#d4af37\]\/30:hover {
+  border-color: rgba(53, 185, 245, 0.6) !important;
+}
+
+.focus\:ring-\[\#d4af37\]:focus,
+.focus\:border-\[\#d4af37\]:focus,
+.focus\:ring-\[\#d4af37\]\/50:focus {
+  border-color: #35B9F5 !important;
+  --tw-ring-color: rgba(53, 185, 245, 0.5) !important;
 }
 
 /* Typography scale enhancements for legibility */
@@ -32,5 +204,101 @@ body {
 .text-sm {
   font-size: 15px !important;
   line-height: 1.375rem !important;
+}
+
+/* Curated premium color scheme compatibility overrides for vicons & vchips */
+
+/* Success status (emerald / green) */
+.text-emerald-400,
+.text-emerald-500 {
+  color: #3CD070 !important;
+}
+.bg-emerald-950\/20,
+.bg-emerald-950\/10 {
+  background-color: rgba(60, 208, 112, 0.12) !important;
+}
+.border-emerald-900\/30,
+.border-emerald-900\/40,
+.border-emerald-950\/30 {
+  border-color: rgba(60, 208, 112, 0.25) !important;
+}
+.bg-emerald-600 {
+  background-color: #2fb960 !important;
+}
+.hover\:bg-emerald-500:hover {
+  background-color: #3CD070 !important;
+}
+
+/* Warning / Medium Risk status (amber / yellow / gold) */
+.text-amber-400,
+.text-amber-500 {
+  color: #FFAF38 !important;
+}
+.bg-amber-950\/20,
+.bg-amber-950\/10,
+.bg-amber-950\/40 {
+  background-color: rgba(255, 175, 56, 0.12) !important;
+}
+.border-amber-900\/30,
+.border-amber-900\/40 {
+  border-color: rgba(255, 175, 56, 0.25) !important;
+}
+.bg-amber-600 {
+  background-color: #f59e0b !important;
+}
+.hover\:bg-amber-500:hover {
+  background-color: #FFAF38 !important;
+}
+
+/* Danger / High Risk / Error status (red) */
+.text-red-400,
+.text-red-500 {
+  color: #FF5E7E !important;
+}
+.bg-red-950\/20,
+.bg-red-950\/10 {
+  background-color: rgba(255, 94, 126, 0.12) !important;
+}
+.border-red-900\/30,
+.border-red-900\/40 {
+  border-color: rgba(255, 94, 126, 0.25) !important;
+}
+.bg-red-650 {
+  background-color: #e04462 !important;
+}
+.hover\:bg-red-700:hover {
+  background-color: #FF5E7E !important;
+}
+
+/* Info / Pending status (blue / sky-blue primary) */
+.text-blue-400,
+.text-blue-500 {
+  color: #35B9F5 !important;
+}
+.bg-blue-950\/20 {
+  background-color: rgba(53, 185, 245, 0.12) !important;
+}
+.border-blue-900\/30 {
+  border-color: rgba(53, 185, 245, 0.25) !important;
+}
+
+/* Color-scheme compatibility for dark/black surfaces to prevent pitch black voids */
+.bg-black {
+  background-color: #0C121D !important;
+}
+.bg-black\/85 {
+  background-color: rgba(12, 18, 29, 0.85) !important;
+}
+.bg-black\/40 {
+  background-color: rgba(12, 18, 29, 0.4) !important;
+}
+.bg-black\/30 {
+  background-color: rgba(12, 18, 29, 0.3) !important;
+}
+.bg-black\/20 {
+  background-color: rgba(12, 18, 29, 0.2) !important;
+}
+.bg-black\/50 {
+  background-color: rgba(12, 18, 29, 0.5) !important;
 }
 

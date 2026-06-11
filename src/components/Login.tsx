@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lock, Shield, AlertTriangle, ArrowRight, Loader2 } from 'lucide-react';
 import { toGreekUppercase } from '../utils/greekUtils';
+import logoUrl from '@/assets/logo.svg';
 
 interface LoginProps {
   language: 'el' | 'en';
@@ -84,9 +85,11 @@ export default function Login({ language, onLoginSuccess }: LoginProps) {
 
         {/* Shield Icon and Branding */}
         <div className="flex flex-col items-center text-center space-y-4">
-          <div className="w-14 h-14 rounded-full bg-[#111] border border-[#d4af37]/25 flex items-center justify-center text-[#d4af37] shadow-[0_0_15px_rgba(212,175,55,0.1)]">
-            <Shield size={26} className="animate-pulse" />
-          </div>
+          <img 
+            src={logoUrl} 
+            className="w-20 h-20 object-contain"
+            alt="Lotos Logo" 
+          />
           
           <div>
             <span className="text-[10px] font-bold tracking-[0.25em] text-[#d4af37] uppercase">

@@ -17,7 +17,19 @@ interface SettingsPanelProps {
   sweepIntervalHours: number;
   disableInternalSweep: boolean;
   lastSweepTime: number;
-  onUpdateSweepSettings: (interval: number, disabled: boolean) => void;
+  onUpdateSweepSettings: (
+    interval: number, 
+    disabled: boolean, 
+    resubmitInterval?: number,
+    geminiKey?: string,
+    clientId?: string,
+    clientSecret?: string
+  ) => void;
+  resubmitIntervalMonths: number;
+  geminiApiKey: string;
+  googleClientId: string;
+  googleClientSecret: string;
+  onOpenWizard: () => void;
 }
 
 const validateBrokers = (data: any): data is Broker[] => {
@@ -47,6 +59,11 @@ export default function SettingsPanel({
   disableInternalSweep,
   lastSweepTime,
   onUpdateSweepSettings,
+  resubmitIntervalMonths,
+  geminiApiKey,
+  googleClientId,
+  googleClientSecret,
+  onOpenWizard,
 }: SettingsPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const brokerFileInputRef = useRef<HTMLInputElement>(null);
@@ -63,13 +80,26 @@ export default function SettingsPanel({
   // Settings states
   const [localInterval, setLocalInterval] = useState(sweepIntervalHours);
   const [localDisabled, setLocalDisabled] = useState(disableInternalSweep);
+  const [localResubmitInterval, setLocalResubmitInterval] = useState(resubmitIntervalMonths);
+  const [localGeminiKey, setLocalGeminiKey] = useState(geminiApiKey);
+  const [localClientId, setLocalClientId] = useState(googleClientId);
+  const [localClientSecret, setLocalClientSecret] = useState(googleClientSecret);
+
+  // Secret display toggles
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showClientSecret, setShowClientSecret] = useState(false);
+
   const [settingsFeedback, setSettingsFeedback] = useState<string | null>(null);
   const [isSweeping, setIsSweeping] = useState(false);
 
   useEffect(() => {
     setLocalInterval(sweepIntervalHours);
     setLocalDisabled(disableInternalSweep);
-  }, [sweepIntervalHours, disableInternalSweep]);
+    setLocalResubmitInterval(resubmitIntervalMonths);
+    setLocalGeminiKey(geminiApiKey);
+    setLocalClientId(googleClientId);
+    setLocalClientSecret(googleClientSecret);
+  }, [sweepIntervalHours, disableInternalSweep, resubmitIntervalMonths, geminiApiKey, googleClientId, googleClientSecret]);
 
   // Trigger JSON file downloads
   const handleExportBackup = () => {
@@ -227,7 +257,7 @@ export default function SettingsPanel({
   };
 
   const handleSaveSettings = () => {
-    onUpdateSweepSettings(localInterval, localDisabled);
+    onUpdateSweepSettings(localInterval, localDisabled, localResubmitInterval, localGeminiKey, localClientId, localClientSecret);
     setSettingsFeedback(
       language === 'el' 
         ? '✅ Οι ρυθμίσεις αποθηκεύτηκαν επιτυχώς!' 
@@ -248,7 +278,7 @@ export default function SettingsPanel({
             ? '✅ Η σάρωση ολοκληρώθηκε επιτυχώς!' 
             : '✅ Sweep completed successfully!'
         );
-        onUpdateSweepSettings(localInterval, localDisabled);
+        onUpdateSweepSettings(localInterval, localDisabled, localResubmitInterval, localGeminiKey, localClientId, localClientSecret);
       } else {
         throw new Error(data.error || 'Unknown error');
       }
@@ -280,8 +310,8 @@ export default function SettingsPanel({
 
       {/* Warning alert if auth is not configured */}
       {!isAuthRequired && (
-        <div className="bg-amber-955/15 border border-amber-900/40 rounded-xl p-4 flex gap-3.5 items-start font-sans">
-          <ShieldAlert className="text-[#d4af37] shrink-0 mt-0.5" size={18} />
+        <div className="bg-amber-950/10 border border-amber-900/30 rounded-xl p-4 flex gap-3.5 items-start font-sans">
+          <ShieldAlert className="text-amber-400 shrink-0 mt-0.5" size={18} />
           <div className="space-y-1">
             <h4 className="text-xs font-bold text-white uppercase tracking-wider">
               {language === 'el' ? '⚠️ ΑΦΥΛΑΚΤΟΣ ΠΙΝΑΚΑΣ ΕΛΕΓΧΟΥ' : '⚠️ UNSECURED DASHBOARD'}
@@ -367,7 +397,7 @@ export default function SettingsPanel({
 
             <button
               onClick={() => setShowPurgeConfirm(true)}
-              className="w-full bg-red-955/20 hover:bg-red-955/40 border border-red-900/40 text-red-400 text-xs font-semibold py-2.5 px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer font-sans"
+              className="w-full bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 text-red-400 text-xs font-semibold py-2.5 px-4 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer font-sans"
             >
               <Trash2 size={14} /> {TRANSLATIONS[language].purgeWorkspaceBtn}
             </button>
@@ -415,7 +445,129 @@ export default function SettingsPanel({
           )}
         </div>
 
-        {/* Panel 4: Background Sweep Settings */}
+        {/* Panel 4: API Gateways & Credentials */}
+        {(!geminiApiKey || !googleClientId || !googleClientSecret) ? (
+          <div className="bg-[#0c0c0e] border border-[#d4af37]/20 rounded-xl p-5 shadow-[0_0_15px_rgba(53,185,245,0.02)] space-y-5 font-sans animate-fade-in">
+            <div className="flex items-center gap-2 border-b border-[#1a1a1a] pb-3 mb-1">
+              <span className="p-1.5 bg-[#d4af37]/10 text-[#d4af37] rounded-lg">
+                <Sparkles size={18} className="text-[#d4af37]" />
+              </span>
+              <h3 className="text-sm font-serif text-white uppercase tracking-wider">
+                {language === 'el' ? 'ΟΔΗΓΟΣ ΕΓΚΑΤΑΣΤΑΣΗΣ API & CREDENTIALS' : 'LOTOS CONFIGURATION WIZARD'}
+              </h3>
+            </div>
+
+            <p className="text-xs text-[#888] leading-relaxed">
+              {language === 'el'
+                ? 'Για να ξεκλειδώσετε τις πλήρεις δυνατότητες του Λωτού (αυτόματες επανυποβολές Gmail και compliance advisor), παρακαλούμε συνδέστε τα κλειδιά API σας μέσω του οδηγού εγκατάστασης.'
+                : 'To unlock the full potential of Lotos (automated Gmail resubmissions and compliance advisor AI), please configure your API gateway keys using the setup wizard.'}
+            </p>
+
+            <div className="flex flex-wrap gap-4 text-[10px] text-[#666] font-mono">
+              <div className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${geminiApiKey ? 'bg-emerald-400' : 'bg-red-400'}`}></span>
+                <span>Gemini AI: {geminiApiKey ? 'Active' : 'Missing'}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${googleClientId && googleClientSecret ? 'bg-emerald-400' : 'bg-red-400'}`}></span>
+                <span>Google API Gateway: {googleClientId && googleClientSecret ? 'Active' : 'Missing'}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={onOpenWizard}
+              className="w-full bg-[#d4af37] hover:bg-[#c4a030] text-black text-xs font-bold py-2.5 px-4 rounded-lg shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer font-sans"
+            >
+              {toGreekUppercase(language === 'el' ? 'Ρύθμιση Τώρα' : 'Configure Now')}
+            </button>
+          </div>
+        ) : (
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5 shadow-xs space-y-5 font-sans">
+            <div className="flex items-center gap-2 border-b border-[#1a1a1a]/60 pb-3 mb-1">
+              <Sparkles size={18} className="text-[#d4af37]" />
+              <h3 className="text-sm font-serif text-white uppercase tracking-wider">
+                {language === 'el' ? 'ΠΥΛΕΣ API & ΔΙΑΠΙΣΤΕΥΤΗΡΙΑ' : 'API GATEWAYS & CREDENTIALS'}
+              </h3>
+            </div>
+
+            <p className="text-xs text-[#888] leading-relaxed">
+              {language === 'el'
+                ? 'Εισαγάγετε τα κλειδιά API σας για να ενεργοποιήσετε τις λειτουργίες AI και την πύλη Google Mail.'
+                : 'Enter your API credentials to activate the Gemini AI Compliance Advisor and automated Gmail sweeps.'}
+            </p>
+
+            <div className="space-y-4">
+              {/* Gemini API Key */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-[#666] font-medium block">
+                  {language === 'el' ? 'Κλειδί API Gemini (Google AI Studio):' : 'Gemini API Key (Google AI Studio):'}
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type={showGeminiKey ? 'text' : 'password'}
+                    value={localGeminiKey}
+                    onChange={(e) => setLocalGeminiKey(e.target.value)}
+                    placeholder="AIzaSy..."
+                    className="w-full bg-black border border-[#1a1a1a] text-white text-xs rounded-lg p-2.5 pr-10 focus:border-[#d4af37]/50 focus:outline-none font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowGeminiKey(!showGeminiKey)}
+                    className="absolute right-3 text-[#555] hover:text-white transition-colors cursor-pointer text-xs font-semibold"
+                  >
+                    {showGeminiKey ? (language === 'el' ? 'Απόκρυψη' : 'Hide') : (language === 'el' ? 'Εμφάνιση' : 'Show')}
+                  </button>
+                </div>
+              </div>
+
+              {/* Google Client ID */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-[#666] font-medium block">
+                  {language === 'el' ? 'Google OAuth Client ID:' : 'Google OAuth Client ID:'}
+                </label>
+                <input
+                  type="text"
+                  value={localClientId}
+                  onChange={(e) => setLocalClientId(e.target.value)}
+                  placeholder="apps.googleusercontent.com"
+                  className="w-full bg-black border border-[#1a1a1a] text-white text-xs rounded-lg p-2.5 focus:border-[#d4af37]/50 focus:outline-none font-mono"
+                />
+              </div>
+
+              {/* Google Client Secret */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-[#666] font-medium block">
+                  {language === 'el' ? 'Google OAuth Client Secret:' : 'Google OAuth Client Secret:'}
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type={showClientSecret ? 'text' : 'password'}
+                    value={localClientSecret}
+                    onChange={(e) => setLocalClientSecret(e.target.value)}
+                    placeholder="GOCSPX-..."
+                    className="w-full bg-black border border-[#1a1a1a] text-white text-xs rounded-lg p-2.5 pr-10 focus:border-[#d4af37]/50 focus:outline-none font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowClientSecret(!showClientSecret)}
+                    className="absolute right-3 text-[#555] hover:text-white transition-colors cursor-pointer text-xs font-semibold"
+                  >
+                    {showClientSecret ? (language === 'el' ? 'Απόκρυψη' : 'Hide') : (language === 'el' ? 'Εμφάνιση' : 'Show')}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                onClick={handleSaveSettings}
+                className="w-full bg-[#d4af37] hover:bg-[#c4a030] text-black text-xs font-bold py-2.5 px-4 rounded-lg shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer font-sans"
+              >
+                {language === 'el' ? 'Αποθήκευση Διαπιστευτηρίων' : 'Save Credentials'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Panel 5: Background Sweep Settings */}
         <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-xl p-5 shadow-xs space-y-5 font-sans">
           <div className="flex items-center gap-2 border-b border-[#1a1a1a]/60 pb-3 mb-1">
             <Cpu size={18} className="text-[#d4af37]" />
@@ -459,7 +611,30 @@ export default function SettingsPanel({
               </div>
             )}
 
-            <div className="text-[11px] text-[#666] flex flex-col gap-1">
+            <div className="space-y-1.5 border-t border-[#1a1a1a]/60 pt-3">
+              <span className="text-xs text-[#666] font-medium block">
+                {language === 'el' ? 'Συχνότητα Επανυποβολής Διαγραφών:' : 'Resubmission Interval:'}
+              </span>
+              <select
+                value={localResubmitInterval}
+                onChange={(e) => setLocalResubmitInterval(parseInt(e.target.value))}
+                className="w-full bg-black border border-[#1a1a1a] text-white text-xs rounded-lg p-2.5 focus:border-[#d4af37]/50 focus:outline-none"
+              >
+                <option value={2}>{language === 'el' ? '2 Μήνες (60 ημέρες)' : '2 Months (60 days)'}</option>
+                <option value={3}>{language === 'el' ? '3 Μήνες (90 ημέρες - Προεπιλογή)' : '3 Months (90 days - Default)'}</option>
+                <option value={4}>{language === 'el' ? '4 Μήνες (120 ημέρες)' : '4 Months (120 days)'}</option>
+                <option value={6}>{language === 'el' ? '6 Μήνες (180 ημέρες)' : '6 Months (180 days)'}</option>
+                <option value={9}>{language === 'el' ? '9 Μήνες (270 ημέρες)' : '9 Months (270 days)'}</option>
+                <option value={12}>{language === 'el' ? '12 Μήνες (360 ημέρες)' : '12 Months (360 days)'}</option>
+              </select>
+              <p className="text-[10px] text-[#555] leading-relaxed mt-1">
+                {language === 'el'
+                  ? 'Μετά την ολοκλήρωση της διαγραφής από έναν broker, ο Λωτός θα ξεκινήσει αντίστροφη μέτρηση για επανυποβολή, προστατεύοντάς σας από μελλοντικές εκ νέου ανιχνεύσεις.'
+                  : 'Once a deletion is verified as completed, Lotos schedules a resubmission to protect you from future re-indexing or re-crawling of your details.'}
+              </p>
+            </div>
+
+            <div className="text-[11px] text-[#666] flex flex-col gap-1 border-t border-[#1a1a1a]/60 pt-3">
               <div>
                 {language === 'el' ? 'Τελευταία σάρωση:' : 'Last sweep run:'}{' '}
                 <strong className="text-[#888]">
@@ -489,7 +664,7 @@ export default function SettingsPanel({
             </div>
 
             {settingsFeedback && (
-              <div className={`p-3 rounded-lg text-xs leading-relaxed font-semibold font-sans mt-3 ${settingsFeedback.includes('❌') ? 'bg-red-955/20 text-red-400 border border-red-900/30' : 'bg-emerald-950/20 text-emerald-400 border border-emerald-900/30'}`}>
+              <div className={`p-3 rounded-lg text-xs leading-relaxed font-semibold font-sans mt-3 ${settingsFeedback.includes('❌') ? 'bg-red-950/20 text-red-400 border border-red-900/30' : 'bg-emerald-950/20 text-emerald-400 border border-emerald-900/30'}`}>
                 {settingsFeedback}
               </div>
             )}
@@ -503,7 +678,7 @@ export default function SettingsPanel({
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" id="confirm-purge-modal">
           <div className="bg-[#0a0a0a] border border-red-900/40 rounded-xl max-w-md w-full p-6 space-y-6 shadow-2xl">
             <div className="flex items-start gap-3">
-              <span className="p-3 bg-red-955/40 text-red-400 rounded-full border border-red-900/30">
+              <span className="p-3 bg-red-950/20 text-red-400 rounded-full border border-red-900/30">
                 <AlertTriangle size={24} />
               </span>
               <div>
@@ -537,7 +712,7 @@ export default function SettingsPanel({
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in" id="duplicate-warning-modal">
           <div className="bg-[#0a0a0a] border border-amber-900/40 rounded-xl max-w-md w-full p-6 space-y-6 shadow-2xl">
             <div className="flex items-start gap-3">
-              <span className="p-3 bg-amber-955/40 text-[#d4af37] rounded-full border border-amber-900/30">
+              <span className="p-3 bg-amber-950/20 text-amber-400 rounded-full border border-amber-900/30">
                 <AlertTriangle size={24} />
               </span>
               <div>

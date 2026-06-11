@@ -14,22 +14,37 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Initialize server-side Gemini client
-  let ai: GoogleGenAI | null = null;
-  const apiKey = process.env.GEMINI_API_KEY;
+  const getStatePath = () => {
+    return process.env.STATE_PATH || path.join(process.cwd(), "state.json");
+  };
 
-  if (apiKey) {
-    ai = new GoogleGenAI({
-      apiKey: apiKey,
+  // Helper to read local state.json on the server
+  const getLoadedState = (): any => {
+    try {
+      const statePath = getStatePath();
+      if (fs.existsSync(statePath)) {
+        return JSON.parse(fs.readFileSync(statePath, "utf-8"));
+      }
+    } catch (e) {
+      console.error("Failed to read state.json for credentials:", e);
+    }
+    return {};
+  };
+
+  // Helper to initialize and retrieve Gemini API client dynamically
+  const getAiClient = (state?: any): GoogleGenAI | null => {
+    const activeState = state || getLoadedState();
+    const key = process.env.GEMINI_API_KEY || activeState?.settings?.geminiApiKey;
+    if (!key) return null;
+    return new GoogleGenAI({
+      apiKey: key,
       httpOptions: {
         headers: {
           'User-Agent': 'aistudio-build',
         }
       }
     });
-  } else {
-    console.warn("WARNING: GEMINI_API_KEY is not defined in environment variables. AI features will be unavailable.");
-  }
+  };
 
   // --- AUTHENTICATION & SECURE SESSION CONTROLS ---
 
@@ -195,17 +210,14 @@ async function startServer() {
 
   // Route path to serve health checks without auth
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", aiEnabled: !!ai });
+    const hasAi = !!getAiClient();
+    res.json({ status: "ok", aiEnabled: hasAi });
   });
 
   // Apply authentication lock to all subsequent API endpoints
   app.use("/api", requireAuth);
 
   // --- PROTECTED API ROUTES ---
-
-  const getStatePath = () => {
-    return process.env.STATE_PATH || path.join(process.cwd(), "state.json");
-  };
 
   const getRedirectUri = (req: express.Request) => {
     const host = req.get('host') || 'localhost:3000';
@@ -215,7 +227,8 @@ async function startServer() {
 
   // Google OAuth URL generation endpoint
   app.get("/api/auth/google/url", (req, res) => {
-    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const state = getLoadedState();
+    const clientId = process.env.GOOGLE_CLIENT_ID || state?.settings?.googleClientId;
     
     if (!clientId) {
       return res.json({ 
@@ -257,8 +270,9 @@ async function startServer() {
     }
 
     try {
-      const clientId = process.env.GOOGLE_CLIENT_ID;
-      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      const state = getLoadedState();
+      const clientId = process.env.GOOGLE_CLIENT_ID || state?.settings?.googleClientId;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET || state?.settings?.googleClientSecret;
       const redirectUri = getRedirectUri(req);
 
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
@@ -350,6 +364,43 @@ async function startServer() {
     }
   });
 
+  // Shared Gmail email sending logic
+  async function sendGmailEmailInternal(accessToken: string, to: string, subject: string, body: string): Promise<any> {
+    const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString("base64")}?=`;
+    const messageParts = [
+      `To: ${to}`,
+      "Content-Type: text/plain; charset=UTF-8",
+      "MIME-Version: 1.0",
+      `Subject: ${utf8Subject}`,
+      "",
+      body,
+    ];
+    const message = messageParts.join("\r\n");
+    const encodedMessage = Buffer.from(message)
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
+    const sendResponse = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        raw: encodedMessage,
+      }),
+    });
+
+    if (!sendResponse.ok) {
+      const errorData = await sendResponse.json();
+      throw new Error(`Gmail API report: ${JSON.stringify(errorData)}`);
+    }
+
+    return await sendResponse.ok ? sendResponse.json() : null;
+  }
+
   // Direct Gmail dispatch proxy endpoint
   app.post("/api/gmail/send-optout", async (req, res) => {
     const { accessToken, to, subject, body } = req.body;
@@ -358,39 +409,7 @@ async function startServer() {
     }
 
     try {
-      const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString("base64")}?=`;
-      const messageParts = [
-        `To: ${to}`,
-        "Content-Type: text/plain; charset=UTF-8",
-        "MIME-Version: 1.0",
-        `Subject: ${utf8Subject}`,
-        "",
-        body,
-      ];
-      const message = messageParts.join("\r\n");
-      const encodedMessage = Buffer.from(message)
-        .toString("base64")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=+$/, "");
-
-      const sendResponse = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          raw: encodedMessage,
-        }),
-      });
-
-      if (!sendResponse.ok) {
-        const errorData = await sendResponse.json();
-        throw new Error(`Gmail API report: ${JSON.stringify(errorData)}`);
-      }
-
-      const sendData = await sendResponse.json();
+      const sendData = await sendGmailEmailInternal(accessToken, to, subject, body);
       res.json({ success: true, messageId: sendData.id, threadId: sendData.threadId });
     } catch (error: any) {
       console.error("Gmail Sending Broker Error:", error);
@@ -548,109 +567,207 @@ async function startServer() {
       
       // 1. Refresh Gmail access token
       logs.push("Refreshing Google API access token...");
-      const refreshResponse = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: process.env.GOOGLE_CLIENT_ID || "",
-          client_secret: process.env.GOOGLE_CLIENT_SECRET || "",
-          refresh_token: tokenData.refresh_token,
-          grant_type: "refresh_token",
-        }),
-      });
-      
-      if (!refreshResponse.ok) {
-        const errorText = await refreshResponse.text();
-        throw new Error(`Failed to exchange refresh token: ${errorText}`);
-      }
-      
-      const refreshedTokens = await refreshResponse.json();
-      tokenData.access_token = refreshedTokens.access_token;
-      if (refreshedTokens.refresh_token) {
-        tokenData.refresh_token = refreshedTokens.refresh_token;
+      if (tokenData.refresh_token === "mock-refresh-token") {
+        logs.push("MOCK: Simulated successful token refresh.");
+        tokenData.access_token = "mock-access-token";
+      } else {
+        const refreshResponse = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: process.env.GOOGLE_CLIENT_ID || "",
+            client_secret: process.env.GOOGLE_CLIENT_SECRET || "",
+            refresh_token: tokenData.refresh_token,
+            grant_type: "refresh_token",
+          }),
+        });
+        
+        if (!refreshResponse.ok) {
+          const errorText = await refreshResponse.text();
+          throw new Error(`Failed to exchange refresh token: ${errorText}`);
+        }
+        
+        const refreshedTokens = await refreshResponse.json();
+        tokenData.access_token = refreshedTokens.access_token;
+        if (refreshedTokens.refresh_token) {
+          tokenData.refresh_token = refreshedTokens.refresh_token;
+        }
       }
       state.googleTokenData = tokenData;
       logs.push("Tokens updated successfully.");
       
       // 2. Scan for pending data brokers
       const tracking = state.trackingData?.['default'] || {};
+      let stateChanged = false;
       const pendingBrokerIds = Object.keys(tracking).filter(
         brokerId => tracking[brokerId]?.status === 'pending'
       );
       
       if (pendingBrokerIds.length === 0) {
         logs.push("No brokers are currently set to 'pending'. Skipping Gmail sweeps.");
-        state.lastSweepTime = Date.now();
-        fs.writeFileSync(statePath, JSON.stringify(state, null, 2), "utf-8");
-        return { success: true, logs };
-      }
-      
-      logs.push(`Found ${pendingBrokerIds.length} pending requests. Auditing inbox...`);
-      
-      const { BROKERS_DATABASE } = await import("./src/data/brokers");
-      let stateChanged = false;
-      const brokersList = state.brokers || BROKERS_DATABASE;
-      
-      for (const brokerId of pendingBrokerIds) {
-        const broker = brokersList.find((b: any) => b.id === brokerId);
-        if (!broker) continue;
+      } else {
+        logs.push(`Found ${pendingBrokerIds.length} pending requests. Auditing inbox...`);
         
-        logs.push(`Searching for responses from ${broker.name} (${broker.domain})...`);
-        const query = `from:${broker.domain}`;
-        const searchUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=1`;
+        const { BROKERS_DATABASE } = await import("./src/data/brokers");
+        const brokersList = state.brokers || BROKERS_DATABASE;
         
-        const searchRes = await fetch(searchUrl, {
-          headers: { Authorization: `Bearer ${tokenData.access_token}` },
-        });
-        
-        if (!searchRes.ok) {
-          logs.push(`  Error querying Gmail for ${broker.domain}: ${searchRes.statusText}`);
-          continue;
-        }
-        
-        const searchData = await searchRes.json();
-        const messages = searchData.messages || [];
-        
-        if (messages.length > 0) {
-          const msgId = messages[0].id;
-          const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}`, {
-            headers: { Authorization: `Bearer ${tokenData.access_token}` },
-          });
+        for (const brokerId of pendingBrokerIds) {
+          const broker = brokersList.find((b: any) => b.id === brokerId);
+          if (!broker) continue;
           
-          if (msgRes.ok) {
-            const msgData = await msgRes.json();
-            const snippet = msgData.snippet || "";
-            logs.push(`  [ALERT] Received response from ${broker.name}: "${snippet.slice(0, 60)}..."`);
-            
-            // Mark status as action required
-            tracking[brokerId] = {
-              status: 'action_required',
-              updatedAt: new Date().toISOString(),
-              notes: `[Background Sweep] Detected new email response in Gmail inbox: "${snippet}"`
-            };
-            
-            // Log history
-            if (!state.history) state.history = [];
-            state.history.unshift({
-              id: `sweep-log-${Date.now()}-${brokerId}`,
-              memberId: 'default',
-              memberName: state.profile?.name || 'Me',
-              brokerId: broker.id,
-              brokerName: broker.name,
-              action: 'status_changed',
-              fromStatus: 'pending',
-              toStatus: 'action_required',
-              timestamp: new Date().toISOString(),
-              notes: `[Background Sweep] New message response: "${snippet.slice(0, 100)}..."`
+          logs.push(`Searching for responses from ${broker.name} (${broker.domain})...`);
+          const query = `from:${broker.domain}`;
+          const searchUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=1`;
+          
+          let searchRes;
+          if (tokenData.refresh_token === "mock-refresh-token") {
+            logs.push(`  MOCK: Skipping Gmail inbox query for ${broker.domain}.`);
+            continue;
+          } else {
+            searchRes = await fetch(searchUrl, {
+              headers: { Authorization: `Bearer ${tokenData.access_token}` },
+            });
+          }
+          
+          if (!searchRes.ok) {
+            logs.push(`  Error querying Gmail for ${broker.domain}: ${searchRes.statusText}`);
+            continue;
+          }
+          
+          const searchData = await searchRes.json();
+          const messages = searchData.messages || [];
+          
+          if (messages.length > 0) {
+            const msgId = messages[0].id;
+            const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}`, {
+              headers: { Authorization: `Bearer ${tokenData.access_token}` },
             });
             
-            stateChanged = true;
+            if (msgRes.ok) {
+              const msgData = await msgRes.json();
+              const snippet = msgData.snippet || "";
+              logs.push(`  [ALERT] Received response from ${broker.name}: "${snippet.slice(0, 60)}..."`);
+              
+              // Mark status as action required
+              tracking[brokerId] = {
+                status: 'action_required',
+                updatedAt: new Date().toISOString(),
+                notes: `[Background Sweep] Detected new email response in Gmail inbox: "${snippet}"`
+              };
+              
+              // Log history
+              if (!state.history) state.history = [];
+              state.history.unshift({
+                id: `sweep-log-${Date.now()}-${brokerId}`,
+                memberId: 'default',
+                memberName: state.profile?.name || 'Me',
+                brokerId: broker.id,
+                brokerName: broker.name,
+                action: 'status_changed',
+                fromStatus: 'pending',
+                toStatus: 'action_required',
+                timestamp: new Date().toISOString(),
+                notes: `[Background Sweep] New message response: "${snippet.slice(0, 100)}..."`
+              });
+              
+              stateChanged = true;
+            }
+          } else {
+            logs.push(`  No messages from ${broker.domain} detected.`);
           }
-        } else {
-          logs.push(`  No messages from ${broker.domain} detected.`);
         }
       }
       
+      // 3. Scan for completed data brokers that are due for resubmission
+      const settings = state.settings || {};
+      const resubmitIntervalMonths = settings.resubmitIntervalMonths ?? 3;
+      const resubmitIntervalMs = resubmitIntervalMonths * 30 * 24 * 60 * 60 * 1000;
+      
+      const completedBrokerIds = Object.keys(tracking).filter(
+        brokerId => {
+          const s = tracking[brokerId];
+          if (s?.status !== 'completed' || !s?.completedAt) return false;
+          const completedTime = new Date(s.completedAt).getTime();
+          return (Date.now() - completedTime) >= resubmitIntervalMs;
+        }
+      );
+
+      if (completedBrokerIds.length > 0) {
+        logs.push(`Found ${completedBrokerIds.length} completed requests due for resubmission.`);
+        
+        const { BROKERS_DATABASE } = await import("./src/data/brokers");
+        const brokersList = state.brokers || BROKERS_DATABASE;
+        
+        for (const brokerId of completedBrokerIds) {
+          const broker = brokersList.find((b: any) => b.id === brokerId);
+          if (!broker) continue;
+          
+          const supportsEmail = broker.optOutMethod === 'Email' || broker.optOutMethod === 'Both';
+          if (supportsEmail && tokenData?.access_token) {
+            logs.push(`[Auto-Resubmit] Preparing automated email dispatch for ${broker.name}...`);
+            try {
+              const legalFrame = state.profile?.state?.includes('GDPR') 
+                ? 'EU GDPR / Greek Law 4624/2019' 
+                : 'California CCPA';
+              
+              let draft;
+              if (tokenData.refresh_token === "mock-refresh-token") {
+                logs.push("MOCK: Simulated AI email drafting.");
+                draft = {
+                  subject: `[MOCK] Deletion request for ${broker.name}`,
+                  body: `MOCK: Please delete my personal data under GDPR.`
+                };
+              } else {
+                draft = await generateDraftEmailInternal(
+                  broker.name,
+                  broker.domain,
+                  state.profile || {},
+                  broker.category,
+                  legalFrame
+                );
+              }
+              
+              const recipient = broker.optOutEmail || `privacy@${broker.domain}`;
+              logs.push(`[Auto-Resubmit] Sending email to ${recipient}...`);
+              
+              if (tokenData.refresh_token === "mock-refresh-token") {
+                logs.push("MOCK: Simulated email send successfully.");
+              } else {
+                await sendGmailEmailInternal(tokenData.access_token, recipient, draft.subject, draft.body);
+              }
+              
+              tracking[brokerId] = {
+                status: 'pending',
+                updatedAt: new Date().toISOString(),
+                notes: `[Auto-Resubmit] Automated removal request re-sent because ${resubmitIntervalMonths} months elapsed since last verification.`
+              };
+              
+              if (!state.history) state.history = [];
+              state.history.unshift({
+                id: `auto-resubmit-log-${Date.now()}-${brokerId}`,
+                memberId: 'default',
+                memberName: state.profile?.name || 'Me',
+                brokerId: broker.id,
+                brokerName: broker.name,
+                action: 'sent_email',
+                fromStatus: 'completed',
+                toStatus: 'pending',
+                timestamp: new Date().toISOString(),
+                notes: `[Auto-Resubmit] Re-sent opt-out email via Gmail integration.`
+              });
+              
+              stateChanged = true;
+              logs.push(`[Auto-Resubmit] Successfully auto-resubmitted request to ${broker.name}.`);
+            } catch (err: any) {
+              logs.push(`[Auto-Resubmit] Failed to auto-resubmit to ${broker.name}: ${err.message || err}`);
+              console.error(`Auto-resubmit failure for ${broker.name}:`, err);
+            }
+          } else {
+            logs.push(`[Auto-Resubmit] ${broker.name} does not support email or Google account is not connected. Skipping automatic dispatch.`);
+          }
+        }
+      }
+
       if (stateChanged) {
         state.trackingData['default'] = tracking;
       }
@@ -680,71 +797,84 @@ async function startServer() {
   });
 
 
+  // Shared email drafting prompt logic using Gemini
+  async function generateDraftEmailInternal(
+    brokerName: string,
+    brokerDomain: string,
+    userProfile: any,
+    category: string,
+    legalFrame: string,
+    state?: any
+  ): Promise<{ subject: string; body: string }> {
+    const activeAi = getAiClient(state);
+    if (!activeAi) {
+      throw new Error("Gemini API is not configured on the server. Please define GEMINI_API_KEY or set it in settings.");
+    }
+
+    const profileInfo = `
+      Name: ${userProfile.name || 'N/A'}
+      ${userProfile.latinName ? `Latin / English Name: ${userProfile.latinName}` : ''}
+      Email: ${userProfile.email || 'N/A'}
+      Alternative Emails: ${userProfile.alternativeEmails?.join(', ') || 'None'}
+      Phone: ${userProfile.phone || 'N/A'}
+      Location: ${userProfile.city || 'N/A'}, ${userProfile.state || 'N/A'} ${userProfile.postalCode || 'N/A'}
+      Address: ${userProfile.address || 'N/A'}
+    `;
+
+    const prompt = `
+      You are a premium digital privacy expert specializing in data removals and opt-outs.
+      Generate a highly professional, legally structured data removal request (suppression/deletion) email to the data broker "${brokerName}" (domain: ${brokerDomain}, category: ${category}).
+
+      Target Legal Framework requested by user: ${legalFrame || 'EU GDPR / Greek Law 4624/2019 / California CCPA'}.
+      
+      Language Requirement:
+      If the data broker's domain ends in ".gr", you MUST write the email subject and body in Greek. Otherwise, you MUST write the email subject and body in English.
+      
+      Use the following user profile metrics:
+      ${profileInfo}
+
+      Ensure the following terms and specifications are listed clearly:
+      1. A formal demand under state, federal, or European frameworks (like the General Data Protection Regulation GDPR Article 17 Right to Erasure, Greek GDPR Enforcement Law 4624/2019, or California CCPA depending on the user's location) requiring complete deletion of all marketing, consumer, tracking, and directory files associated with their identity.
+         If the language of the email is English, use the "Latin / English Name" (if provided). If "Latin / English Name" is not provided and the Name contains Greek characters, automatically transliterate the Greek Name into Latin characters (like Greeklish) and present both in the email body (e.g. "Greek Name (Latin Transliteration)").
+      2. Explicitly demand that they place these identifiers (including their emails, phones, and names) on a permanent suppression list to prevent future re-scraping or re-indexing of their identity.
+      3. Request written confirmation within the legal timeframe (usually 30 days under GDPR, or 45 days under CCPA) that deletion has been processed.
+      4. State that they should NOT sell, lease, or distribute their data further.
+      5. Provide a direct list of the specific values they need to delete, structured for easy search by the broker's compliance team.
+
+      Return a JSON object containing two fields: "subject" and "body".
+      Ensure the body has formal formatting, neat clean breaks, and placeholders only where appropriate.
+    `;
+
+    const response = await activeAi.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            subject: { type: "STRING", description: "The email subject line" },
+            body: { type: "STRING", description: "The full text content of the email" }
+          },
+          required: ["subject", "body"]
+        }
+      }
+    });
+
+    const responseText = response.text;
+    if (!responseText) {
+      throw new Error("No response text found from Gemini");
+    }
+
+    return JSON.parse(responseText.trim());
+  }
+
   // Opt-out email customization custom generator
   app.post("/api/gemini/draft-email", async (req, res) => {
     try {
-      if (!ai) {
-        throw new Error("Gemini API is not configured on the server. Please define GEMINI_API_KEY.");
-      }
-
       const { brokerName, brokerDomain, userProfile, category, legalFrame } = req.body;
-      
-      const profileInfo = `
-        Name: ${userProfile.name || 'N/A'}
-        ${userProfile.latinName ? `Latin / English Name: ${userProfile.latinName}` : ''}
-        Email: ${userProfile.email || 'N/A'}
-        Alternative Emails: ${userProfile.alternativeEmails?.join(', ') || 'None'}
-        Phone: ${userProfile.phone || 'N/A'}
-        Location: ${userProfile.city || 'N/A'}, ${userProfile.state || 'N/A'} ${userProfile.postalCode || 'N/A'}
-        Address: ${userProfile.address || 'N/A'}
-      `;
-
-      const prompt = `
-        You are a premium digital privacy expert specializing in data removals and opt-outs.
-        Generate a highly professional, legally structured data removal request (suppression/deletion) email to the data broker "${brokerName}" (domain: ${brokerDomain}, category: ${category}).
-
-        Target Legal Framework requested by user: ${legalFrame || 'EU GDPR / Greek Law 4624/2019 / California CCPA'}.
-        
-        Language Requirement:
-        If the data broker's domain ends in ".gr", you MUST write the email subject and body in Greek. Otherwise, you MUST write the email subject and body in English.
-        
-        Use the following user profile metrics:
-        ${profileInfo}
-
-        Ensure the following terms and specifications are listed clearly:
-        1. A formal demand under state, federal, or European frameworks (like the General Data Protection Regulation GDPR Article 17 Right to Erasure, Greek GDPR Enforcement Law 4624/2019, or California CCPA depending on the user's location) requiring complete deletion of all marketing, consumer, tracking, and directory files associated with their identity.
-           If the language of the email is English, use the "Latin / English Name" (if provided). If "Latin / English Name" is not provided and the Name contains Greek characters, automatically transliterate the Greek Name into Latin characters (like Greeklish) and present both in the email body (e.g. "Greek Name (Latin Transliteration)").
-        2. Explicitly demand that they place these identifiers (including their emails, phones, and names) on a permanent suppression list to prevent future re-scraping or re-indexing of their identity.
-        3. Request written confirmation within the legal timeframe (usually 30 days under GDPR, or 45 days under CCPA) that deletion has been processed.
-        4. State that they should NOT sell, lease, or distribute their data further.
-        5. Provide a direct list of the specific values they need to delete, structured for easy search by the broker's compliance team.
-
-        Return a JSON object containing two fields: "subject" and "body".
-        Ensure the body has formal formatting, neat clean breaks, and placeholders only where appropriate.
-      `;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "OBJECT",
-            properties: {
-              subject: { type: "STRING", description: "The email subject line" },
-              body: { type: "STRING", description: "The full text content of the email" }
-            },
-            required: ["subject", "body"]
-          }
-        }
-      });
-
-      const responseText = response.text;
-      if (!responseText) {
-        throw new Error("No response text found from Gemini");
-      }
-
-      const result = JSON.parse(responseText.trim());
+      const state = getLoadedState();
+      const result = await generateDraftEmailInternal(brokerName, brokerDomain, userProfile, category, legalFrame, state);
       res.json(result);
     } catch (error: any) {
       console.error("Draft Email Generation Error:", error);
@@ -755,8 +885,10 @@ async function startServer() {
   // AI Privacy Advisor (Chatbot)
   app.post("/api/gemini/advisor", async (req, res) => {
     try {
-      if (!ai) {
-        throw new Error("Gemini API is not configured on the server. Please define GEMINI_API_KEY.");
+      const state = getLoadedState();
+      const activeAi = getAiClient(state);
+      if (!activeAi) {
+        throw new Error("Gemini API is not configured on the server. Please define GEMINI_API_KEY or set it in settings.");
       }
 
       const { messages } = req.body;
@@ -785,7 +917,7 @@ async function startServer() {
         - Do not recommend subscribing to paid removal services. Educate them that using this self-managed app is safer because they keep their personal logs completely local without sharing their passwords or credit cards.
       `;
 
-      const response = await ai.models.generateContent({
+      const response = await activeAi.models.generateContent({
         model: "gemini-3.5-flash",
         contents: contents,
         config: {
